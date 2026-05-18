@@ -1,0 +1,1737 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>SmartDoor — Quản Lý</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #f0f4ff;
+        --surface: #ffffff;
+        --card: #ffffff;
+        --card-2: #f7f9ff;
+        --border: rgba(99, 120, 220, 0.12);
+        --border-bright: rgba(99, 120, 220, 0.28);
+        --accent: #4f6ef7;
+        --accent-light: rgba(79, 110, 247, 0.1);
+        --accent-glow: rgba(79, 110, 247, 0.25);
+        --accent2: #7c3aed;
+        --green: #10b981;
+        --green-light: rgba(16, 185, 129, 0.1);
+        --red: #ef4444;
+        --red-light: rgba(239, 68, 68, 0.1);
+        --orange: #f59e0b;
+        --orange-light: rgba(245, 158, 11, 0.1);
+        --yellow: #f59e0b;
+        --yellow-light: rgba(245, 158, 11, 0.1);
+        --text: #1a1f36;
+        --text-dim: #4a5578;
+        --text-muted: #8891b0;
+        --radius: 18px;
+        --radius-sm: 12px;
+        --radius-xs: 8px;
+        --sidebar-w: 240px;
+        --shadow-sm: 0 1px 3px rgba(31, 38, 135, 0.06), 0 4px 16px rgba(31, 38, 135, 0.06);
+        --shadow: 0 4px 24px rgba(31, 38, 135, 0.1), 0 1px 4px rgba(31, 38, 135, 0.06);
+        --shadow-lg: 0 12px 40px rgba(31, 38, 135, 0.16);
+        --transition: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+        min-height: 100vh;
+        line-height: 1.55;
+      }
+
+      /* MESH BACKGROUND */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 70% 50% at 5% 0%, rgba(79,110,247,0.08) 0%, transparent 65%),
+          radial-gradient(ellipse 50% 40% at 95% 5%, rgba(124,58,237,0.07) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 50% at 50% 100%, rgba(16,185,129,0.05) 0%, transparent 65%);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+
+      /* ═══ SIDEBAR ═══ */
+      .sidebar {
+        width: var(--sidebar-w);
+        background: var(--surface);
+        border-right: 1px solid var(--border);
+        position: fixed;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        z-index: 50;
+        box-shadow: 4px 0 32px rgba(31,38,135,0.06);
+      }
+
+      .logo {
+        padding: 24px 20px 22px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo-icon {
+        width: 42px;
+        height: 42px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        border-radius: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px var(--accent-glow);
+      }
+      .logo-text h1 { font-size: 15px; font-weight: 800; color: var(--text); letter-spacing: -0.4px; }
+      .logo-text p { font-size: 10px; color: var(--text-muted); margin-top: 1px; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 600; }
+
+      .nav-group { padding: 14px 0; flex: 1; overflow-y: auto; }
+      .nav-label {
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        padding: 10px 20px 5px;
+      }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 10px 16px;
+        margin: 2px 10px;
+        cursor: pointer;
+        transition: all var(--transition);
+        border-radius: var(--radius-sm);
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--text-dim);
+        user-select: none;
+      }
+      .nav-item:hover { background: var(--accent-light); color: var(--accent); }
+      .nav-item.active { background: linear-gradient(135deg, var(--accent-light), rgba(124,58,237,0.08)); color: var(--accent); box-shadow: inset 0 0 0 1px var(--border-bright); }
+      .nav-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+
+      .sidebar-footer { padding: 14px 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 13px;
+        background: var(--green-light);
+        border: 1px solid rgba(16,185,129,0.2);
+        border-radius: 10px;
+        font-size: 11.5px;
+        color: var(--green);
+        font-weight: 600;
+      }
+      .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; flex-shrink: 0; }
+      @keyframes pulse {
+        0%,100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.8); }
+      }
+
+      /* ═══ MAIN ═══ */
+      .main { margin-left: var(--sidebar-w); padding: 28px 28px 90px; flex: 1; min-width: 0; }
+
+      /* ═══ PAGE HEADER ═══ */
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .page-header-left { display: flex; align-items: center; gap: 13px; }
+      .page-icon {
+        width: 46px;
+        height: 46px;
+        background: linear-gradient(135deg, var(--accent-light), rgba(124,58,237,0.1));
+        border: 1.5px solid var(--border-bright);
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 21px;
+        box-shadow: var(--shadow-sm);
+      }
+      .page-title { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+      .page-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
+
+      /* ═══ SECTIONS ═══ */
+      .section { display: none; animation: fadeUp 0.28s ease; }
+      .section.active { display: block; }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ═══ CARDS ═══ */
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 22px;
+        box-shadow: var(--shadow-sm);
+        transition: border-color var(--transition), box-shadow var(--transition);
+      }
+      .card:hover { border-color: var(--border-bright); box-shadow: var(--shadow); }
+      .card-title {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1.1px;
+        margin-bottom: 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .card-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(to right, var(--border), transparent); }
+
+      /* ═══ GRIDS ═══ */
+      .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 22px; }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+      /* ═══ STAT CARDS ═══ */
+      .stat-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 22px;
+        position: relative;
+        overflow: hidden;
+        transition: all var(--transition);
+        box-shadow: var(--shadow-sm);
+      }
+      .stat-card:hover { border-color: var(--border-bright); box-shadow: var(--shadow); transform: translateY(-2px); }
+      .stat-card::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(to right, var(--card-accent, var(--accent)), transparent);
+        border-radius: 3px 3px 0 0;
+      }
+      .stat-card .stat-icon {
+        width: 42px; height: 42px;
+        border-radius: 12px;
+        background: var(--icon-bg, var(--accent-light));
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+        margin-bottom: 14px;
+        box-shadow: var(--shadow-sm);
+      }
+      .stat-val {
+        font-size: 34px;
+        font-weight: 800;
+        font-family: "JetBrains Mono", monospace;
+        letter-spacing: -1.5px;
+        line-height: 1;
+        margin-bottom: 5px;
+        color: var(--text);
+      }
+      .stat-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+
+      /* ═══ BUTTONS ═══ */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 10px 18px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        border: none;
+        transition: all var(--transition);
+        font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+        white-space: nowrap;
+        letter-spacing: -0.1px;
+      }
+      .btn:active { transform: scale(0.96); }
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        color: #fff;
+        box-shadow: 0 4px 14px var(--accent-glow);
+      }
+      .btn-primary:hover { box-shadow: 0 6px 20px var(--accent-glow); filter: brightness(1.08); }
+      .btn-danger { background: var(--red-light); color: var(--red); border: 1.5px solid rgba(239,68,68,0.2); }
+      .btn-danger:hover { background: rgba(239,68,68,0.18); }
+      .btn-success { background: var(--green-light); color: var(--green); border: 1.5px solid rgba(16,185,129,0.22); }
+      .btn-success:hover { background: rgba(16,185,129,0.18); box-shadow: 0 4px 14px rgba(16,185,129,0.15); }
+      .btn-ghost { background: var(--card-2); color: var(--text-dim); border: 1.5px solid var(--border); }
+      .btn-ghost:hover { border-color: var(--border-bright); color: var(--text); background: var(--surface); }
+      .btn-sm { padding: 7px 13px; font-size: 12px; border-radius: var(--radius-xs); }
+      .btn:disabled { opacity: 0.38; cursor: not-allowed; pointer-events: none; }
+
+      /* ═══ TABLE ═══ */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); }
+      table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 520px; }
+      th {
+        text-align: left;
+        padding: 11px 16px;
+        color: var(--text-muted);
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.9px;
+        border-bottom: 1.5px solid var(--border);
+        background: var(--card-2);
+      }
+      td { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: rgba(79,110,247,0.025); }
+
+      /* ═══ BADGE ═══ */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 11px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1px;
+      }
+      .badge-green { background: var(--green-light); color: var(--green); border: 1.5px solid rgba(16,185,129,0.22); }
+      .badge-red { background: var(--red-light); color: var(--red); border: 1.5px solid rgba(239,68,68,0.2); }
+      .badge-blue { background: var(--accent-light); color: var(--accent); border: 1.5px solid rgba(79,110,247,0.22); }
+      .badge-yellow { background: var(--yellow-light); color: var(--orange); border: 1.5px solid rgba(245,158,11,0.22); }
+
+      /* ═══ MODAL ═══ */
+      .modal-bg {
+        position: fixed; inset: 0;
+        background: rgba(15,20,50,0.45);
+        backdrop-filter: blur(10px);
+        display: none; align-items: center; justify-content: center;
+        z-index: 100; padding: 16px;
+      }
+      .modal-bg.open { display: flex; }
+      .modal {
+        background: var(--card);
+        border: 1.5px solid var(--border-bright);
+        border-radius: 22px;
+        padding: 30px;
+        width: 100%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: var(--shadow-lg);
+        animation: modalIn 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+      @keyframes modalIn {
+        from { opacity: 0; transform: scale(0.9) translateY(16px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+      .modal h2 { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; }
+      .modal-close {
+        width: 34px; height: 34px;
+        border-radius: 10px;
+        background: var(--card-2);
+        border: 1.5px solid var(--border);
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        color: var(--text-muted);
+        font-size: 15px;
+        transition: all var(--transition);
+      }
+      .modal-close:hover { background: var(--red-light); color: var(--red); border-color: rgba(239,68,68,0.25); }
+
+      /* ═══ FORM ═══ */
+      .form-group { margin-bottom: 16px; }
+      label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }
+      input, select {
+        width: 100%;
+        padding: 11px 14px;
+        background: var(--card-2);
+        border: 1.5px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        font-size: 14px;
+        outline: none;
+        transition: border-color var(--transition), box-shadow var(--transition);
+        font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+        font-weight: 500;
+      }
+      input::placeholder { color: var(--text-muted); }
+      input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); background: var(--surface); }
+      select option { background: var(--card); }
+      .form-row { display: flex; gap: 12px; }
+      .form-row .form-group { flex: 1; }
+      .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+
+      /* ═══ CAMERA ═══ */
+      .camera-box {
+        background: linear-gradient(135deg, var(--bg), var(--card-2));
+        border: 2px dashed var(--border-bright);
+        border-radius: 14px;
+        height: 220px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 14px;
+        transition: border-color 0.3s, box-shadow 0.3s;
+      }
+      .camera-box.flash { border-color: var(--green); box-shadow: 0 0 24px var(--green-light); }
+      .camera-box video, .camera-box img { width: 100%; height: 100%; object-fit: cover; }
+      .camera-placeholder { color: var(--text-muted); text-align: center; }
+      .camera-placeholder .cam-emoji { font-size: 38px; margin-bottom: 10px; opacity: 0.45; }
+      .camera-placeholder p { font-size: 12.5px; font-weight: 600; }
+      .camera-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+
+      /* ═══ PROGRESS ═══ */
+      .capture-progress { margin-top: 16px; }
+      .progress-bar { height: 6px; background: var(--bg); border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
+      .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 6px; transition: width 0.4s ease; width: 0%; }
+      .progress-text { font-size: 12px; color: var(--text-muted); text-align: center; margin-bottom: 12px; font-weight: 600; }
+      .capture-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
+      .capture-thumb { position: relative; border-radius: 9px; overflow: hidden; border: 2px solid var(--border); }
+      .capture-thumb.done { border-color: var(--green); }
+      .capture-thumb img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+      .capture-thumb span { position: absolute; bottom: 2px; right: 3px; font-size: 9px; color: #fff; font-weight: 700; background: rgba(0,0,0,0.6); padding: 1px 5px; border-radius: 5px; }
+
+      /* ═══ AVATAR ═══ */
+      .avatar {
+        width: 38px; height: 38px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px;
+        font-weight: 800;
+        color: #fff;
+        flex-shrink: 0;
+        box-shadow: 0 3px 10px var(--accent-glow);
+      }
+      .user-info { display: flex; align-items: center; gap: 11px; }
+      .user-info .name { font-weight: 700; font-size: 13.5px; }
+      .user-info .sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; font-weight: 500; }
+
+      /* ═══ STRANGER GRID ═══ */
+      .stranger-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+      .stranger-card { border-radius: 14px; overflow: hidden; border: 1.5px solid var(--border); cursor: pointer; transition: all var(--transition); box-shadow: var(--shadow-sm); }
+      .stranger-card:hover { transform: scale(1.03); border-color: var(--border-bright); box-shadow: var(--shadow); }
+      .stranger-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+      .stranger-card .s-info { padding: 9px 10px; background: var(--card-2); font-size: 10px; color: var(--text-muted); font-family: "JetBrains Mono", monospace; font-weight: 600; border-top: 1px solid var(--border); }
+
+      /* ═══ DOOR CONTROL ═══ */
+      .door-control { display: flex; flex-direction: column; align-items: center; padding: 28px 20px; gap: 18px; }
+      .door-icon {
+        width: 118px; height: 118px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 46px;
+        transition: all 0.4s;
+        border: 2.5px solid;
+        position: relative;
+      }
+      .door-icon.locked {
+        background: linear-gradient(135deg, var(--red-light), rgba(239,68,68,0.06));
+        border-color: rgba(239,68,68,0.3);
+        box-shadow: 0 8px 28px rgba(239,68,68,0.1);
+      }
+      .door-icon.unlocked {
+        background: linear-gradient(135deg, var(--green-light), rgba(16,185,129,0.06));
+        border-color: rgba(16,185,129,0.4);
+        animation: doorGlow 1.5s infinite;
+      }
+      @keyframes doorGlow {
+        0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.35); }
+        50% { box-shadow: 0 0 0 18px rgba(16,185,129,0); }
+      }
+      .door-status-text { font-size: 16px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); }
+
+      /* ═══ INFO BOX ═══ */
+      .info-box {
+        background: linear-gradient(135deg, var(--accent-light), rgba(124,58,237,0.07));
+        border: 1.5px solid rgba(79,110,247,0.2);
+        border-radius: 14px;
+        padding: 15px 18px;
+        font-size: 13px;
+        color: var(--text-dim);
+        margin-bottom: 22px;
+        line-height: 1.65;
+        font-weight: 500;
+      }
+      .info-box b { color: var(--accent); }
+
+      /* ═══ VERIFY PANEL ═══ */
+      #verify-status { margin-top: 16px; }
+      #verify-step { font-size: 13px; color: var(--text-dim); text-align: center; margin-top: 10px; line-height: 1.6; font-weight: 500; }
+
+      /* ═══ RECENT USERS ═══ */
+      .recent-user-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+      .recent-user-row:last-child { border-bottom: none; }
+
+      /* ═══ GUIDE STEPS ═══ */
+      .guide-step { display: flex; align-items: flex-start; gap: 11px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-dim); font-weight: 500; }
+      .guide-step:last-child { border-bottom: none; }
+      .guide-num {
+        width: 24px; height: 24px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--accent-light), rgba(124,58,237,0.1));
+        color: var(--accent);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 11px;
+        font-weight: 800;
+        flex-shrink: 0;
+        margin-top: 1px;
+        font-family: "JetBrains Mono", monospace;
+        border: 1px solid rgba(79,110,247,0.15);
+      }
+
+      /* ═══ AUTO DETECT BANNER ═══ */
+      .auto-banner {
+        background: linear-gradient(135deg, rgba(79,110,247,0.06), rgba(124,58,237,0.06));
+        border: 1.5px solid var(--border-bright);
+        border-radius: var(--radius);
+        padding: 18px 22px;
+        margin-bottom: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 14px;
+        box-shadow: var(--shadow-sm);
+      }
+      .auto-banner-left { display: flex; align-items: center; gap: 14px; }
+      .auto-banner-icon {
+        width: 46px; height: 46px;
+        background: linear-gradient(135deg, var(--accent-light), rgba(124,58,237,0.1));
+        border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 22px;
+        border: 1px solid var(--border-bright);
+      }
+
+      /* ═══ TOAST ═══ */
+      .toast {
+        position: fixed;
+        bottom: 80px; right: 18px;
+        background: var(--card);
+        border: 1.5px solid var(--border-bright);
+        border-radius: 14px;
+        padding: 13px 18px;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transform: translateY(110px) scale(0.93);
+        opacity: 0;
+        transition: all 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+        z-index: 300;
+        box-shadow: var(--shadow-lg);
+        max-width: calc(100vw - 36px);
+      }
+      .toast.show { transform: translateY(0) scale(1); opacity: 1; }
+      .toast.success { border-color: rgba(16,185,129,0.3); }
+      .toast.error { border-color: rgba(239,68,68,0.3); }
+
+      /* ═══ HIDDEN ═══ */
+      #captureCanvas, #testCanvas { display: none; }
+
+      /* ═══════════════════════════════════════
+         BOTTOM NAV (mobile)
+      ═══════════════════════════════════════ */
+      .bottom-nav {
+        display: none;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-top: 1px solid var(--border);
+        z-index: 50;
+        padding: 0 4px env(safe-area-inset-bottom, 0);
+        box-shadow: 0 -4px 24px rgba(31,38,135,0.08);
+      }
+      .bottom-nav-inner { display: flex; justify-content: space-around; align-items: stretch; }
+      .bnav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 9px 4px 11px;
+        cursor: pointer;
+        transition: all var(--transition);
+        color: var(--text-muted);
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        gap: 4px;
+        border: none;
+        background: none;
+        -webkit-tap-highlight-color: transparent;
+        border-top: 2.5px solid transparent;
+      }
+      .bnav-item .bnav-icon { font-size: 21px; transition: transform var(--transition); }
+      .bnav-item.active { color: var(--accent); border-top-color: var(--accent); }
+      .bnav-item.active .bnav-icon { transform: scale(1.12); }
+      .bnav-item:active .bnav-icon { transform: scale(0.88); }
+
+      /* ═══════════════════════════════════════
+         RESPONSIVE
+      ═══════════════════════════════════════ */
+      @media (max-width: 768px) {
+        .sidebar { display: none; }
+        .main { margin-left: 0; padding: 16px 14px 96px; }
+        .bottom-nav { display: block; }
+        .grid-3 { grid-template-columns: 1fr 1fr; gap: 12px; }
+        .grid-2 { grid-template-columns: 1fr; gap: 16px; }
+        .page-title { font-size: 18px; }
+        .stat-val { font-size: 28px; }
+        .modal { padding: 22px; }
+        .form-row { flex-direction: column; gap: 0; }
+        .toast { bottom: 82px; }
+        .card { padding: 16px; }
+        table { min-width: 480px; }
+        .capture-grid { grid-template-columns: repeat(5, 1fr); }
+        .auto-banner { padding: 14px 16px; }
+      }
+      @media (max-width: 400px) {
+        .grid-3 { grid-template-columns: 1fr; }
+        .stat-val { font-size: 30px; }
+        .page-header { flex-direction: column; align-items: flex-start; }
+        .auto-banner { flex-direction: column; align-items: flex-start; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- SIDEBAR -->
+      <nav class="sidebar">
+        <div class="logo">
+          <div class="logo-icon">🔐</div>
+          <div class="logo-text">
+            <h1>SmartDoor</h1>
+            <p>Khóa thông minh</p>
+          </div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-label">Hệ thống</div>
+          <div class="nav-item active" onclick="showSection('dashboard')">
+            <span class="nav-icon">📊</span><span>Tổng quan</span>
+          </div>
+          <div class="nav-item" onclick="showSection('users')">
+            <span class="nav-icon">👥</span><span>Người dùng</span>
+          </div>
+          <div class="nav-item" onclick="showSection('strangers')">
+            <span class="nav-icon">🚨</span><span>Người lạ</span>
+          </div>
+          <div class="nav-label" style="margin-top:8px">Thiết bị</div>
+          <div class="nav-item" onclick="showSection('test')">
+            <span class="nav-icon">🧪</span><span>Kiểm tra</span>
+          </div>
+          <div class="nav-item" onclick="showSection('camera')">
+            <span class="nav-icon">📷</span><span>Xem Camera</span>
+          </div>
+          <div class="nav-item" onclick="showSection('door')">
+            <span class="nav-icon">🚪</span><span>Điều khiển</span>
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <div class="status-pill">
+            <div class="dot"></div>
+            <span>Server online</span>
+          </div>
+          <div class="status-pill" id="esp32-status-pill" style="background:var(--red-light);border-color:rgba(239,68,68,0.2);color:var(--red);transition:all var(--transition);">
+            <div class="dot" id="esp32-status-dot" style="background:var(--red);"></div>
+            <span id="esp32-status-text">ESP32-CAM offline</span>
+          </div>
+        </div>
+      </nav>
+
+      <!-- MAIN -->
+      <main class="main">
+
+        <!-- ── DASHBOARD ── -->
+        <section class="section active" id="dashboard">
+          <div class="page-header">
+            <div class="page-header-left">
+              <div class="page-icon">📊</div>
+              <div>
+                <div class="page-title">Tổng quan</div>
+                <div class="page-sub">Trạng thái hệ thống SmartDoor</div>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="refreshStatus()">🔄 Làm mới</button>
+          </div>
+
+          <!-- AUTO DETECT BANNER -->
+          <div class="auto-banner">
+            <div class="auto-banner-left">
+              <div class="auto-banner-icon">🤖</div>
+              <div>
+                <div style="font-weight:700;font-size:14.5px;color:var(--text);">Tự động nhận diện khuôn mặt</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">Bật: PIR phát hiện → tự động quét mặt + tay. Tắt: chỉ hoạt động khi Web yêu cầu.</div>
+              </div>
+            </div>
+            <button class="btn btn-success" id="btn-toggle-auto-dash" onclick="toggleAutoDetect()" style="padding:10px 22px;font-size:13px;">
+              🟢 ĐANG BẬT
+            </button>
+          </div>
+
+          <div class="grid-3">
+            <div class="stat-card" style="--card-accent:var(--accent)">
+              <div class="stat-icon" style="--icon-bg:var(--accent-light)">👥</div>
+              <div class="stat-val" id="stat-users">--</div>
+              <div class="stat-lbl">Người dùng</div>
+            </div>
+            <div class="stat-card" style="--card-accent:var(--red)">
+              <div class="stat-icon" style="--icon-bg:var(--red-light)">🚨</div>
+              <div class="stat-val" id="stat-strangers" style="color:var(--red)">--</div>
+              <div class="stat-lbl">Người lạ phát hiện</div>
+            </div>
+            <div class="stat-card" style="--card-accent:var(--orange)">
+              <div class="stat-icon" style="--icon-bg:var(--orange-light)">🕐</div>
+              <div class="stat-val" id="stat-time" style="font-size:19px;color:var(--orange)">--:--</div>
+              <div class="stat-lbl">Giờ server</div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">Người dùng gần đây</div>
+              <div id="recent-users"><div style="color:var(--text-muted);font-size:13px">Đang tải...</div></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Hướng dẫn nhanh</div>
+              <div>
+                <div class="guide-step"><div class="guide-num">1</div><span>Tạo người dùng trong tab <b style="color:var(--text)">Người dùng</b></span></div>
+                <div class="guide-step"><div class="guide-num">2</div><span>Đăng ký khuôn mặt (tự động chụp 5 ảnh)</span></div>
+                <div class="guide-step"><div class="guide-num">3</div><span>Vào tab <b style="color:var(--text)">Kiểm tra</b> để test nhận dạng</span></div>
+                <div class="guide-step"><div class="guide-num">4</div><span>Cấu hình Telegram trong tab <b style="color:var(--text)">Điều khiển</b></span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── USERS ── -->
+        <section class="section" id="users">
+          <div class="page-header">
+            <div class="page-header-left">
+              <div class="page-icon">👥</div>
+              <div>
+                <div class="page-title">Người dùng</div>
+                <div class="page-sub">Quản lý sinh trắc học</div>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="openAddUser()">＋ Thêm</button>
+          </div>
+          <div class="card">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Người dùng</th><th>Vai trò</th><th>Khuôn mặt</th><th>Bàn tay</th><th></th>
+                  </tr>
+                </thead>
+                <tbody id="users-table">
+                  <tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:36px">Đang tải...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── STRANGERS ── -->
+        <section class="section" id="strangers">
+          <div class="page-header">
+            <div class="page-header-left">
+              <div class="page-icon">🚨</div>
+              <div>
+                <div class="page-title">Người lạ</div>
+                <div class="page-sub">Phát hiện bởi hệ thống</div>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="loadStrangers()">🔄 Làm mới</button>
+            <div style="margin-bottom:12px">
+            <button class="btn btn-danger" onclick="clearStrangers()">
+                🗑 Xóa toàn bộ người lạ
+            </button>
+            </div>
+
+            
+          </div>
+          <div class="card">
+            <div class="stranger-grid" id="stranger-grid">
+              <div style="color:var(--text-muted);font-size:13px">Đang tải...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── TEST ── -->
+        <section class="section" id="test">
+          <div class="page-header">
+            <div class="page-header-left">
+              <div class="page-icon">🧪</div>
+              <div>
+                <div class="page-title">Xác thực kép</div>
+                <div class="page-sub">Mặt + Lòng bàn tay</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-box">
+            ℹ️ <b>Quy trình:</b> Nhìn vào camera để nhận dạng khuôn mặt. Đạt <b>trên 70%</b> sẽ tự động mở cửa. Thông báo sẽ được gửi qua Telegram.
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">Camera</div>
+              <div class="camera-box" id="test-cam-box">
+                <div class="camera-placeholder" id="test-placeholder">
+                  <div class="cam-emoji">📷</div>
+                  <p>Nhấn "Mở Camera" để bắt đầu</p>
+                </div>
+                <video id="test-cam-video" autoplay playsinline style="display:none;width:100%;height:100%;object-fit:cover;"></video>
+                <img id="test-esp-stream" src="" style="display:none;width:100%;height:100%;object-fit:cover" />
+              </div>
+              <canvas id="testCanvas"></canvas>
+              <div class="camera-controls" style="gap:8px;margin-bottom:12px;">
+                <button class="btn btn-ghost btn-sm" onclick="startTestCamera('web')">💻 Mở Webcam</button>
+                <button class="btn btn-ghost btn-sm" onclick="startTestCamera('esp32')">📷 Mở Camera Mạch</button>
+                <button class="btn btn-danger btn-sm" onclick="stopTestCamera()">⏹</button>
+              </div>
+              <button class="btn btn-primary" onclick="startDualVerify()" id="btn-verify" disabled style="width:100%;justify-content:center;padding:12px;">
+                🔐 Bắt đầu xác thực
+              </button>
+              <div id="verify-status" style="display:none;margin-top:16px">
+                <div class="progress-bar"><div class="progress-fill" id="verify-progress"></div></div>
+                <div id="verify-step"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Kết quả xác thực</div>
+              <div id="dashboard-status" style="text-align:center;padding:12px 14px;border-radius:12px;background:var(--card-2);border:1.5px solid var(--border);font-weight:700;margin-bottom:16px;font-size:15px;letter-spacing:-0.2px;">
+                Đang chờ xác thực...
+              </div>
+              <div style="display:flex;gap:12px;">
+                <div id="dash-face" style="flex:1;padding:16px 12px;border-radius:14px;border:1.5px solid var(--border-bright);text-align:center;transition:0.3s;background:var(--card-2);">
+                  <div style="font-size:28px;margin-bottom:6px;">😀</div>
+                  <div style="font-weight:700;margin-bottom:8px;font-size:13px;">Khuôn mặt</div>
+                  <div id="dash-face-info" style="font-size:12px;color:var(--text-muted);font-weight:600;">Đang chờ...</div>
+                </div>
+                <div id="dash-palm" style="flex:1;padding:16px 12px;border-radius:14px;border:1.5px solid var(--border-bright);text-align:center;transition:0.3s;background:var(--card-2);">
+                  <div style="font-size:28px;margin-bottom:6px;">🖐️</div>
+                  <div style="font-weight:700;margin-bottom:8px;font-size:13px;">Bàn tay</div>
+                  <div id="dash-palm-info" style="font-size:12px;color:var(--text-muted);font-weight:600;">Đang chờ...</div>
+                </div>
+              </div>
+              <div id="test-result" style="color:var(--text-muted);font-size:12px;margin-top:16px;max-height:150px;overflow-y:auto;"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── DOOR ── -->
+        <section class="section" id="door">
+          <div class="page-header">
+            <div class="page-header-left">
+              <div class="page-icon">🚪</div>
+              <div>
+                <div class="page-title">Điều khiển cửa</div>
+                <div class="page-sub">Cài đặt hệ thống</div>
+              </div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="card">
+              <div class="door-control">
+                <div class="door-icon locked" id="door-icon">🔒</div>
+                <div class="door-status-text" id="door-status">Đang khóa</div>
+                <button class="btn btn-success" onclick="manualOpen()" style="font-size:14px;padding:13px 30px;border-radius:14px;">
+                  🔓 Mở cửa từ xa
+                </button>
+                <div style="font-size:12px;color:var(--text-muted);text-align:center;line-height:1.7;margin-bottom:4px;font-weight:500;">
+                  Cửa sẽ tự đóng sau 5 giây.<br/>Thao tác này sẽ gửi thông báo qua Telegram.
+                </div>
+                <div style="border-top:1.5px solid var(--border);padding-top:16px;text-align:center;width:100%;">
+                  <div style="font-weight:700;margin-bottom:10px;font-size:13px;color:var(--text-dim);">Cảm biến chuyển động (Tự động nhận diện)</div>
+                  <button class="btn btn-success" id="btn-toggle-auto" onclick="toggleAutoDetect()" style="font-size:13px;">
+                    🟢 ĐANG BẬT
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Cài đặt Telegram & Hệ thống</div>
+              <div class="form-group">
+                <label>Telegram Bot Token</label>
+                <input type="text" id="cfg-token" placeholder="Nhập bot token..." />
+              </div>
+              <div class="form-group">
+                <label>Chat ID nhận thông báo</label>
+                <input type="text" id="cfg-chatid" placeholder="Nhập chat ID..." />
+              </div>
+              <div class="form-group">
+                <label>Thời gian mở cửa (giây)</label>
+                <input type="number" id="cfg-doortime" value="5" min="1" max="60" />
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" onclick="saveConfig()">💾 Lưu</button>
+                <button class="btn btn-success btn-sm" onclick="testTelegram()">📨 Test Telegram</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── CAMERA ── -->
+        <section class="section" id="camera">
+          <div class="page-header">
+            <div class="page-header-left">
+              <div class="page-icon">📷</div>
+              <div>
+                <div class="page-title">Xem Camera</div>
+                <div class="page-sub">Trực tiếp từ ESP32-CAM</div>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="text-align:center;padding:20px">
+            <img id="camera-stream" src="" alt="Camera Stream" style="max-width:100%;border-radius:14px;border:2px solid var(--border-bright);box-shadow:var(--shadow);" />
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- BOTTOM NAV (mobile) -->
+    <nav class="bottom-nav">
+      <div class="bottom-nav-inner">
+        <button class="bnav-item active" onclick="showSection('dashboard')" data-sec="dashboard">
+          <span class="bnav-icon">📊</span><span>Tổng quan</span>
+        </button>
+        <button class="bnav-item" onclick="showSection('users')" data-sec="users">
+          <span class="bnav-icon">👥</span><span>Người dùng</span>
+        </button>
+        <button class="bnav-item" onclick="showSection('strangers')" data-sec="strangers">
+          <span class="bnav-icon">🚨</span><span>Người lạ</span>
+        </button>
+        <button class="bnav-item" onclick="showSection('test')" data-sec="test">
+          <span class="bnav-icon">🧪</span><span>Kiểm tra</span>
+        </button>
+        <button class="bnav-item" onclick="showSection('camera')" data-sec="camera">
+          <span class="bnav-icon">📷</span><span>Camera</span>
+        </button>
+        <button class="bnav-item" onclick="showSection('door')" data-sec="door">
+          <span class="bnav-icon">🚪</span><span>Điều khiển</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- MODAL THÊM USER -->
+    <div class="modal-bg" id="modal-add-user">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>➕ Thêm người dùng</h2>
+          <div class="modal-close" onclick="closeModal('modal-add-user')">✕</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Họ tên *</label>
+            <input type="text" id="new-name" placeholder="Nguyễn Văn A" />
+          </div>
+          <div class="form-group">
+            <label>Số điện thoại</label>
+            <input type="text" id="new-phone" placeholder="0901234567" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Vai trò</label>
+          <select id="new-role">
+            <option value="user">👤 Người dùng thường</option>
+            <option value="admin">🔑 Quản trị viên</option>
+            <option value="guest">👥 Khách</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-ghost" onclick="closeModal('modal-add-user')">Hủy</button>
+          <button class="btn btn-primary" onclick="submitAddUser()">✅ Tạo người dùng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL SINH TRẮC -->
+    <div class="modal-bg" id="modal-biometric">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="bio-title">📸 Đăng ký khuôn mặt</h2>
+          <div class="modal-close" onclick="stopCamera();closeModal('modal-biometric')">✕</div>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;font-weight:600;" id="bio-desc">
+          Nhìn thẳng vào camera, đảm bảo đủ ánh sáng
+        </p>
+        <div class="camera-box" id="cam-box">
+          <div class="camera-placeholder" id="cam-placeholder">
+            <div class="cam-emoji">📷</div>
+            <p>Camera chưa mở</p>
+          </div>
+          <video id="cam-video" autoplay playsinline style="display:none;width:100%;height:100%;object-fit:cover"></video>
+          <img id="cam-esp-stream" src="" style="display:none;width:100%;height:100%;object-fit:cover" />
+        </div>
+        <canvas id="captureCanvas" style="display:none;"></canvas>
+        <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px;">
+          <button class="btn btn-ghost btn-sm" onclick="startCamera('web')">💻 Mở Webcam</button>
+          <button class="btn btn-ghost btn-sm" onclick="startCamera('esp32')">📷 Mở Camera Mạch</button>
+        </div>
+        <div class="camera-controls" style="margin-bottom:14px">
+          <button class="btn btn-primary btn-sm" onclick="startAutoCapture()" id="btn-auto-capture" disabled>
+            ⚡ Chụp tự động 5 ảnh
+          </button>
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+            📁 Upload ảnh
+            <input type="file" accept="image/*" multiple onchange="uploadMultiple(this)" style="display:none" />
+          </label>
+        </div>
+        <div class="capture-progress" id="capture-progress" style="display:none">
+          <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+          <div class="progress-text" id="progress-text">0/5</div>
+          <div class="capture-grid" id="capture-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast" id="toast">
+      <span id="toast-icon">✅</span>
+      <span id="toast-msg">Thành công</span>
+    </div>
+
+    <script>
+      const API = "";
+      let currentBioUserId = "";
+      let currentBioType = "";
+      let cameraStream = null;
+      let testCameraStream = null;
+      let isCapturing = false;
+      let captureMode = "web";
+
+      // ── NAVIGATION ──────────────────────────────────────
+      function showSection(id) {
+        stopTestCamera();
+        document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+        document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+        document.querySelectorAll(".bnav-item").forEach(n => n.classList.remove("active"));
+        document.getElementById(id).classList.add("active");
+        document.querySelectorAll(".nav-item").forEach(n => {
+          if (n.getAttribute("onclick")?.includes(id)) n.classList.add("active");
+        });
+        document.querySelectorAll(".bnav-item").forEach(n => {
+          if (n.dataset.sec === id) n.classList.add("active");
+        });
+        if (id === "users") loadUsers();
+        if (id === "strangers") loadStrangers();
+        if (id === "dashboard") refreshStatus();
+        if (id === "door") loadConfig();
+        const cameraStream = document.getElementById("camera-stream");
+        if (id === "camera" && cameraStream.src.indexOf("/api/stream") === -1) {
+          cameraStream.src = "/api/stream";
+        } else if (id !== "camera") {
+          cameraStream.src = "";
+        }
+      }
+
+      // ── TOAST ────────────────────────────────────────────
+      function toast(msg, type = "success") {
+        const t = document.getElementById("toast");
+        document.getElementById("toast-icon").textContent = type === "success" ? "✅" : "❌";
+        document.getElementById("toast-msg").textContent = msg;
+        t.className = `toast ${type} show`;
+        setTimeout(() => t.classList.remove("show"), 3000);
+      }
+
+      // ── API ──────────────────────────────────────────────
+      async function api(endpoint, opts = {}) {
+        try {
+          const res = await fetch(API + endpoint, opts);
+          const ct = res.headers.get("content-type") || "";
+          if (!ct.includes("application/json")) {
+            console.error("Non-JSON response from", endpoint, res.status);
+            toast("Server trả lỗi (code " + res.status + ")", "error");
+            return null;
+          }
+          return await res.json();
+        } catch (e) {
+          toast("Lỗi kết nối server: " + e.message, "error");
+          return null;
+        }
+      }
+
+      // ── DASHBOARD ────────────────────────────────────────
+      async function refreshStatus() {
+        const status = await api("/api/status");
+        if (!status) return;
+        document.getElementById("stat-users").textContent = status.users_count;
+        document.getElementById("stat-strangers").textContent = status.strangers_count;
+        const d = new Date(status.server_time);
+        document.getElementById("stat-time").textContent = d.toLocaleTimeString("vi-VN");
+        loadRecentUsers();
+        try {
+          const espStatus = await api("/api/esp32/status");
+          const pill = document.getElementById("esp32-status-pill");
+          const dot = document.getElementById("esp32-status-dot");
+          const text = document.getElementById("esp32-status-text");
+          if (espStatus && espStatus.connected) {
+            pill.style.background = "var(--green-light)";
+            pill.style.borderColor = "rgba(16,185,129,0.2)";
+            pill.style.color = "var(--green)";
+            dot.style.background = "var(--green)";
+            text.textContent = "ESP32-CAM online";
+          } else {
+            pill.style.background = "var(--red-light)";
+            pill.style.borderColor = "rgba(239,68,68,0.2)";
+            pill.style.color = "var(--red)";
+            dot.style.background = "var(--red)";
+            text.textContent = "ESP32-CAM offline";
+          }
+        } catch(e) { console.warn("Lỗi kiểm tra trạng thái ESP32:", e); }
+      }
+
+      async function loadRecentUsers() {
+        const users = await api("/api/users");
+        if (!users) return;
+        const html = users.slice(0, 5).map(u => `
+          <div class="recent-user-row">
+            <div class="avatar">${u.name[0]}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
+              <div style="font-size:11px;color:var(--text-muted);font-weight:500;">${u.has_face ? "✅" : "❌"} Mặt (${u.face_count}/5)</div>
+            </div>
+          </div>
+        `).join("");
+        document.getElementById("recent-users").innerHTML = html || '<div style="color:var(--text-muted);font-size:13px;padding:18px 0">Chưa có người dùng</div>';
+      }
+
+      // ── USERS ────────────────────────────────────────────
+      async function loadUsers() {
+        const users = await api("/api/users");
+        if (!users) return;
+        const roleLabel = { admin: "🔑 Admin", user: "👤 User", guest: "👥 Khách" };
+        const html = users.map(u => `
+          <tr>
+            <td>
+              <div class="user-info">
+                <div class="avatar">${u.name[0]}</div>
+                <div>
+                  <div class="name">${u.name}</div>
+                  <div class="sub">${u.phone || "Chưa có SĐT"} · ID: ${u.id}</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge ${u.role === "admin" ? "badge-yellow" : "badge-blue"}">${roleLabel[u.role] || u.role}</span></td>
+            <td>
+              <span class="badge ${u.face_count > 0 ? "badge-green" : "badge-red"}">${u.face_count}/5</span>
+              <button class="btn btn-ghost btn-sm" style="margin-left:6px" onclick="openBiometric('${u.id}','face')">📸</button>
+            </td>
+            <td>
+              <span class="badge ${(u.palm_count||0) > 0 ? "badge-green" : "badge-red"}">${u.palm_count||0}/5</span>
+              <button class="btn btn-ghost btn-sm" style="margin-left:6px" onclick="openBiometric('${u.id}','palm')">🖐️</button>
+            </td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.name}')">🗑️</button></td>
+          </tr>
+        `).join("");
+        document.getElementById("users-table").innerHTML = html || '<tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:36px">Chưa có người dùng nào</td></tr>';
+      }
+
+      function openAddUser() {
+        document.getElementById("new-name").value = "";
+        document.getElementById("new-phone").value = "";
+        document.getElementById("modal-add-user").classList.add("open");
+      }
+
+      async function submitAddUser() {
+        const name = document.getElementById("new-name").value.trim();
+        const phone = document.getElementById("new-phone").value.trim();
+        const role = document.getElementById("new-role").value;
+        if (!name) { toast("Vui lòng nhập tên", "error"); return; }
+        const res = await api("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, phone, role }),
+        });
+        if (res?.user_id) {
+          toast(`Đã tạo người dùng ${name}`);
+          closeModal("modal-add-user");
+          loadUsers();
+        }
+      }
+
+      async function deleteUser(id, name) {
+        if (!confirm(`Xóa "${name}"?\nToàn bộ dữ liệu khuôn mặt sẽ bị xóa!`)) return;
+        const res = await api(`/api/users/${id}`, { method: "DELETE" });
+        if (res) { toast(`Đã xóa ${name}`); loadUsers(); }
+      }
+
+      // ── BIOMETRIC ────────────────────────────────────────
+      function openBiometric(userId, type) {
+        currentBioUserId = userId;
+        currentBioType = type;
+        isCapturing = false;
+        const titles = { face: "😀 Đăng ký khuôn mặt (5 ảnh)", palm: "🖐️ Đăng ký lòng bàn tay (5 ảnh)" };
+        const descs = { face: "Nhìn thẳng vào camera. Hệ thống sẽ tự động chụp 5 ảnh ở các góc khác nhau.", palm: "Xòe lòng bàn tay hướng vào camera. Hệ thống sẽ tự động chụp 5 ảnh." };
+        document.getElementById("bio-title").textContent = titles[type];
+        document.getElementById("bio-desc").textContent = descs[type];
+        document.getElementById("capture-progress").style.display = "none";
+        document.getElementById("progress-fill").style.width = "0%";
+        document.getElementById("capture-grid").innerHTML = "";
+        document.getElementById("btn-auto-capture").disabled = true;
+        const placeholder = document.getElementById("cam-placeholder");
+        if (!placeholder) {
+          const box = document.getElementById("cam-box");
+          const ph = document.createElement("div");
+          ph.className = "camera-placeholder"; ph.id = "cam-placeholder";
+          ph.innerHTML = '<div class="cam-emoji">📷</div><p>Camera chưa mở</p>';
+          box.appendChild(ph);
+        }
+        document.getElementById("cam-video").style.display = "none";
+        document.getElementById("cam-esp-stream").style.display = "none";
+        document.getElementById("cam-esp-stream").src = "";
+        document.getElementById("modal-biometric").classList.add("open");
+      }
+
+      async function startCamera(mode = 'web') {
+        captureMode = mode;
+        stopCamera();
+        const ph = document.getElementById("cam-placeholder");
+        if (ph) ph.remove();
+        if (mode === 'esp32') {
+          const img = document.getElementById("cam-esp-stream");
+          img.src = "/api/stream?" + new Date().getTime();
+          img.style.display = "block";
+          document.getElementById("btn-auto-capture").disabled = false;
+          toast("Đang xem từ ESP32 Camera");
+          return;
+        }
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+          const video = document.getElementById("cam-video");
+          video.srcObject = cameraStream;
+          video.style.display = "block";
+          document.getElementById("btn-auto-capture").disabled = false;
+          toast("Web Camera đang hoạt động");
+        } catch(e) {
+          if (e.message && e.message.includes("undefined")) {
+            toast("Lỗi bảo mật: Mobile chặn camera vì dùng HTTP. Hãy dùng https hoặc localhost", "error");
+          } else {
+            toast("Không thể mở Web Camera: " + e.message, "error");
+          }
+        }
+      }
+
+      function stopCamera() {
+        if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+        document.getElementById("cam-video").style.display = "none";
+        document.getElementById("cam-esp-stream").style.display = "none";
+        document.getElementById("cam-esp-stream").src = "";
+      }
+
+      function captureFrame(videoEl, canvasEl) {
+        return new Promise(resolve => {
+          const canvas = document.getElementById(canvasEl);
+          const video = document.getElementById(videoEl);
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          canvas.getContext("2d").drawImage(video, 0, 0);
+          canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.92);
+        });
+      }
+
+      async function startAutoCapture() {
+        if (isCapturing) return;
+        isCapturing = true;
+        const total = 5;
+        const progressDiv = document.getElementById("capture-progress");
+        const progressFill = document.getElementById("progress-fill");
+        const progressText = document.getElementById("progress-text");
+        const gridDiv = document.getElementById("capture-grid");
+        progressDiv.style.display = "block";
+        progressFill.style.width = "0%";
+        gridDiv.innerHTML = "";
+        document.getElementById("btn-auto-capture").disabled = true;
+        for (let j = 1; j <= total; j++) {
+          const thumb = document.createElement("div");
+          thumb.className = "capture-thumb"; thumb.id = `thumb-${j}`;
+          thumb.innerHTML = `<div style="width:100%;aspect-ratio:1;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:18px">${j}</div>`;
+          gridDiv.appendChild(thumb);
+        }
+        let successCount = 0, attempts = 0;
+        while (successCount < total && attempts < 20) {
+          attempts++;
+          const index = successCount + 1;
+          progressText.textContent = `Đang chụp ${index}/${total}...`;
+          progressFill.style.width = `${(successCount / total) * 100}%`;
+          const camBox = document.getElementById("cam-box");
+          camBox.classList.add("flash");
+          setTimeout(() => camBox.classList.remove("flash"), 300);
+          const videoSource = (window.captureMode === 'esp32') ? "cam-esp-stream" : "cam-video";
+          const blob = await captureFrame(videoSource, "captureCanvas");
+          const endpoint = `/api/users/${currentBioUserId}/${currentBioType}?index=${index}`;
+          try {
+            const res = await fetch(API + endpoint, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob });
+            const data = await res.json();
+            if (res.ok) {
+              successCount++;
+              const thumb = document.getElementById(`thumb-${index}`);
+              thumb.className = "capture-thumb done";
+              thumb.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="Ảnh ${index}"><span>✅ ${index}</span>`;
+              if (successCount < total) {
+                progressText.textContent = `Đã chụp ${successCount}/${total}. Thay đổi góc nhẹ...`;
+                await new Promise(r => setTimeout(r, 1500));
+              }
+            } else {
+              progressText.textContent = `Không phát hiện được - thử lại...`;
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          } catch(e) {
+            toast("Lỗi: " + e.message, "error");
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+        progressFill.style.width = "100%";
+        if (successCount === total) {
+          progressText.textContent = `Hoàn thành ${total}/${total}! ✅`;
+          if (currentBioType === "face") await fetch(API + `/api/users/${currentBioUserId}/face/done`, { method: "POST" });
+          if (currentBioType === "palm") await fetch(API + `/api/users/${currentBioUserId}/palm/done`, { method: "POST" });
+          toast(`Đã đăng ký ${total} ảnh thành công!`);
+          setTimeout(() => { stopCamera(); closeModal("modal-biometric"); loadUsers(); }, 1200);
+        } else {
+          progressText.textContent = `Chỉ chụp được ${successCount}/${total}. Thử lại.`;
+          toast(`Chỉ chụp được ${successCount}/${total}`, "error");
+        }
+        isCapturing = false;
+        document.getElementById("btn-auto-capture").disabled = false;
+      }
+
+      async function uploadMultiple(input) {
+        if (!input.files || input.files.length === 0) return;
+        if (!currentBioUserId) { toast("Vui lòng chọn người dùng trước", "error"); return; }
+        const files = Array.from(input.files).slice(0, 5);
+        const progressDiv = document.getElementById("capture-progress");
+        const progressFill = document.getElementById("progress-fill");
+        const progressText = document.getElementById("progress-text");
+        const gridDiv = document.getElementById("capture-grid");
+        progressDiv.style.display = "block"; gridDiv.innerHTML = "";
+        let successCount = 0;
+        for (let i = 0; i < files.length; i++) {
+          const index = i + 1;
+          progressText.textContent = `Đang upload ${index}/${files.length}...`;
+          progressFill.style.width = `${(i / files.length) * 100}%`;
+          const endpoint = `/api/users/${currentBioUserId}/${currentBioType}?index=${index}`;
+          try {
+            const res = await fetch(API + endpoint, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: files[i] });
+            const data = await res.json();
+            if (res.ok) {
+              successCount++;
+              const thumb = document.createElement("div");
+              thumb.className = "capture-thumb done";
+              thumb.innerHTML = `<img src="${URL.createObjectURL(files[i])}" alt="Ảnh ${index}"><span>✅ ${index}</span>`;
+              gridDiv.appendChild(thumb);
+            } else {
+              toast(`Ảnh ${index}: ${data.error || "Lỗi"}`, "error");
+            }
+          } catch(e) { toast("Lỗi: " + e.message, "error"); }
+        }
+        progressFill.style.width = "100%";
+        progressText.textContent = `Upload ${successCount}/${files.length} thành công!`;
+        if (currentBioType === "face" && successCount > 0) await fetch(API + `/api/users/${currentBioUserId}/face/done`, { method: "POST" });
+        if (currentBioType === "palm" && successCount > 0) await fetch(API + `/api/users/${currentBioUserId}/palm/done`, { method: "POST" });
+        if (successCount > 0) {
+          toast(`Upload ${successCount} ảnh thành công!`);
+          setTimeout(() => { stopCamera(); closeModal("modal-biometric"); loadUsers(); }, 1200);
+        }
+        input.value = "";
+      }
+
+      // ── STRANGERS ────────────────────────────────────────
+      async function loadStrangers() {
+        const files = await api("/api/strangers");
+        if (!files) return;
+        if (files.length === 0) {
+          document.getElementById("stranger-grid").innerHTML = '<div style="color:var(--text-muted);font-size:14px;padding:24px">Chưa phát hiện người lạ nào 🎉</div>';
+          return;
+        }
+        const html = files.map(f => {
+          const parts = f.replace(".jpg","").split("_");
+          const time = parts.slice(1).join(" ").replace(/(\d{4})(\d{2})(\d{2}) (\d{2})(\d{2})(\d{2})/, "$3/$2/$1 $4:$5:$6");
+          return `<div class="stranger-card"><img src="/api/strangers/${f}" alt="Người lạ" loading="lazy"><div class="s-info">🕐 ${time}</div></div>`;
+        }).join("");
+        document.getElementById("stranger-grid").innerHTML = html;
+      }
+      async function clearStrangers() {
+
+          if (!confirm(
+            "Xóa toàn bộ ảnh người lạ?"
+          )) return;
+
+          const res = await fetch(
+            "/api/strangers/clear",
+            {
+              method:"POST"
+            }
+          );
+
+          const data = await res.json();
+
+          alert(data.message);
+
+          loadStrangers();
+        }
+
+      // ── XÁC THỰC KÉP ─────────────────────────────────────
+      let testCaptureMode = "web";
+
+      async function startTestCamera(mode) {
+        testCaptureMode = mode;
+        const video = document.getElementById("test-cam-video");
+        const espStream = document.getElementById("test-esp-stream");
+        const ph = document.getElementById("test-placeholder");
+        const btnVerify = document.getElementById("btn-verify");
+        stopTestCamera();
+        if (ph) ph.style.display = "none";
+        btnVerify.disabled = false;
+        if (mode === "web") {
+          if (espStream) espStream.style.display = "none";
+          try {
+            testCameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+            video.srcObject = testCameraStream;
+            video.style.display = "block";
+            toast("Webcam đang hoạt động");
+          } catch(e) {
+            btnVerify.disabled = true;
+            if (ph) ph.style.display = "block";
+            if (e.message && e.message.includes("undefined")) {
+              toast("Lỗi bảo mật: HTTPS bắt buộc", "error");
+            } else {
+              toast("Không thể mở webcam: " + e.message, "error");
+            }
+          }
+        } else {
+          if (video) video.style.display = "none";
+          if (espStream) {
+            espStream.src = API + "/api/stream?" + new Date().getTime();
+            espStream.style.display = "block";
+          }
+          toast("Đang tải luồng camera ESP32...");
+        }
+      }
+
+      function stopTestCamera() {
+        if (testCameraStream) { testCameraStream.getTracks().forEach(t => t.stop()); testCameraStream = null; }
+        const video = document.getElementById("test-cam-video");
+        if (video) { video.style.display = "none"; video.srcObject = null; }
+        const espStream = document.getElementById("test-esp-stream");
+        if (espStream) { espStream.style.display = "none"; espStream.src = ""; }
+        const ph = document.getElementById("test-placeholder");
+        if (ph) ph.style.display = "";
+        const btn = document.getElementById("btn-verify");
+        if (btn) btn.disabled = true;
+      }
+
+      async function startDualVerify() {
+        const statusDiv = document.getElementById("verify-status");
+        const stepDiv = document.getElementById("verify-step");
+        const progressFill = document.getElementById("verify-progress");
+        const camBox = document.getElementById("test-cam-box");
+        const dashStatus = document.getElementById("dashboard-status");
+        const dashFace = document.getElementById("dash-face");
+        const dashFaceInfo = document.getElementById("dash-face-info");
+        const dashPalm = document.getElementById("dash-palm");
+        const dashPalmInfo = document.getElementById("dash-palm-info");
+
+        dashStatus.textContent = "Đang xác thực Khuôn mặt...";
+        dashStatus.style.color = "inherit";
+        dashFace.style.borderColor = "var(--accent)";
+        dashFace.style.background = "rgba(79,110,247,0.07)";
+        dashFaceInfo.textContent = "Đang quét...";
+        dashPalm.style.borderColor = "var(--border-bright)";
+        dashPalm.style.background = "var(--card-2)";
+        dashPalmInfo.textContent = "Đang chờ...";
+        statusDiv.style.display = "block";
+        document.getElementById("btn-verify").disabled = true;
+        progressFill.style.width = "10%";
+        stepDiv.innerHTML = "😀 <b>Bước 1/2:</b> Nhìn thẳng vào camera...";
+        camBox.style.borderColor = "var(--accent)";
+
+        audioPlayer.src = API + audioMap['motion'];
+        audioPlayer.play().catch(e => {});
+        await new Promise(r => setTimeout(r, 1000));
+
+        let faceBlob;
+        if (testCaptureMode === "esp32") {
+          faceBlob = await captureFrame("test-esp-stream", "testCanvas");
+        } else {
+          faceBlob = await captureFrame("test-cam-video", "testCanvas");
+        }
+        let faceData;
+        try {
+          const fRes = await fetch(API + "/api/test/face", { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: faceBlob });
+          faceData = await fRes.json();
+        } catch(e) {
+          dashStatus.textContent = "Lỗi kết nối máy chủ!";
+          dashStatus.style.color = "var(--red)";
+          dashFace.style.borderColor = "var(--red)";
+          dashFaceInfo.textContent = "Lỗi mạng";
+          resetVerifyUI(); return;
+        }
+        progressFill.style.width = "40%";
+
+        if (faceData.status === "no_face") {
+          audioPlayer.src = API + audioMap['no_face'];
+          audioPlayer.play().catch(e => {});
+          dashStatus.textContent = "Không tìm thấy khuôn mặt!";
+          dashStatus.style.color = "var(--orange)";
+          dashFace.style.borderColor = "var(--orange)";
+          dashFaceInfo.textContent = "Vui lòng thử lại";
+          camBox.style.borderColor = "";
+          resetVerifyUI(); return;
+        }
+        if (faceData.status === "stranger") {
+          audioPlayer.src = API + audioMap['face_fail'];
+          audioPlayer.play().catch(e => {});
+          dashStatus.textContent = "Phát hiện NGƯỜI LẠ!";
+          dashStatus.style.color = "var(--red)";
+          dashFace.style.borderColor = "var(--red)";
+          dashFace.style.background = "var(--red-light)";
+          dashFaceInfo.innerHTML = `<b style="color:var(--red)">Không khớp</b>`;
+          camBox.style.borderColor = "";
+          resetVerifyUI(); return;
+        }
+        if (faceData.status !== "recognized") {
+          dashStatus.textContent = "Lỗi hệ thống!";
+          dashStatus.style.color = "var(--red)";
+          resetVerifyUI(); return;
+        }
+
+        audioPlayer.src = API + audioMap['face_ok'];
+        audioPlayer.play().catch(e => {});
+        progressFill.style.width = "50%";
+        camBox.style.borderColor = "var(--orange)";
+        dashFace.style.borderColor = "var(--green)";
+        dashFace.style.background = "var(--green-light)";
+        dashFaceInfo.innerHTML = `<b style="color:var(--green)">${faceData.name}</b><br>${faceData.confidence}%`;
+        dashStatus.textContent = "Vui lòng đưa tay ra...";
+        dashStatus.style.color = "inherit";
+        dashPalm.style.borderColor = "var(--accent)";
+        dashPalm.style.background = "rgba(79,110,247,0.07)";
+        dashPalmInfo.textContent = "Đang chờ tay...";
+        stepDiv.innerHTML = `🖐️ <b>Bước 2/2:</b> Xòe lòng bàn tay vào camera...<br><small>👤 ${faceData.name} (${faceData.confidence}%)</small>`;
+
+        let palmData = null;
+        let palmAttempts = 0;
+        const maxPalmAttempts = 5;
+        while (palmAttempts < maxPalmAttempts) {
+          palmAttempts++;
+          dashPalmInfo.textContent = `Đang quét lần ${palmAttempts}...`;
+          stepDiv.innerHTML = `🖐️ Đang xử lý lòng bàn tay (Thử ${palmAttempts}/${maxPalmAttempts})...`;
+          if (palmAttempts > 1) {
+            await new Promise(r => setTimeout(r, 1500));
+          } else {
+            await new Promise(r => setTimeout(r, 3000));
+          }
+          let palmBlob;
+          if (testCaptureMode === "esp32") {
+            palmBlob = await captureFrame("test-esp-stream", "testCanvas");
+          } else {
+            palmBlob = await captureFrame("test-cam-video", "testCanvas");
+          }
+          try {
+            const pRes = await fetch(API + `/api/test/palm?user_id=${faceData.user_id}`, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: palmBlob });
+            palmData = await pRes.json();
+            if (palmData.status === "matched" || palmData.status === "no_data") break;
+          } catch(e) {
+            dashStatus.textContent = "Lỗi kết nối máy chủ!";
+            dashStatus.style.color = "var(--red)";
+            dashPalm.style.borderColor = "var(--red)";
+            dashPalmInfo.textContent = "Lỗi mạng";
+            resetVerifyUI(); return;
+          }
+        }
+        progressFill.style.width = "80%";
+
+        if (palmData.status === "no_palm" || palmData.status === "no_data") {
+          audioPlayer.src = API + audioMap['palm_fail'];
+          audioPlayer.play().catch(e => {});
+          dashStatus.textContent = (palmData.status === "no_palm") ? "Không tìm thấy lòng bàn tay!" : "Chưa đăng ký lòng bàn tay!";
+          dashStatus.style.color = "var(--orange)";
+          dashPalm.style.borderColor = "var(--orange)";
+          dashPalmInfo.textContent = "Thất bại";
+          camBox.style.borderColor = "";
+          resetVerifyUI(); return;
+        }
+        if (palmData.status === "not_matched") {
+          audioPlayer.src = API + audioMap['palm_fail'];
+          audioPlayer.play().catch(e => {});
+          dashStatus.innerHTML = "LÒNG BÀN TAY KHÔNG KHỚP!";
+          dashStatus.style.color = "var(--red)";
+          dashPalm.style.borderColor = "var(--red)";
+          dashPalm.style.background = "var(--red-light)";
+          dashPalmInfo.innerHTML = `<b style="color:var(--red)">${palmData.confidence}%</b>`;
+          camBox.style.borderColor = "";
+          fetch(API + "/api/test/notify_fail", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: faceData.name, face_confidence: faceData.confidence, palm_confidence: palmData.confidence, reason: "Lòng bàn tay không khớp (thử 5 lần)" }),
+          }).catch(e => console.error(e));
+          resetVerifyUI(); return;
+        }
+        if (palmData.status !== "matched") {
+          dashStatus.textContent = "Lỗi hệ thống!";
+          dashStatus.style.color = "var(--red)";
+          resetVerifyUI(); return;
+        }
+
+        audioPlayer.src = API + audioMap['palm_ok'];
+        audioPlayer.play().catch(e => {});
+        progressFill.style.width = "100%";
+        camBox.style.borderColor = "var(--green)";
+        dashPalm.style.borderColor = "var(--green)";
+        dashPalm.style.background = "var(--green-light)";
+        dashPalmInfo.innerHTML = `<b style="color:var(--green)">${palmData.confidence}%</b>`;
+        dashStatus.innerHTML = "🔓 XÁC THỰC THÀNH CÔNG!";
+        dashStatus.style.color = "var(--green)";
+        fetch(API + "/api/test/notify_success", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: faceData.user_id, name: faceData.name, face_confidence: faceData.confidence, palm_confidence: palmData.confidence }),
+        });
+        toast("🔓 Xác thực kép thành công! Đang kích hoạt Servo...");
+        camBox.style.borderColor = "";
+        resetVerifyUI();
+        manualOpen();
+      }
+
+      function resetVerifyUI() {
+        document.getElementById("btn-verify").disabled = false;
+        setTimeout(() => { document.getElementById("verify-status").style.display = "none"; }, 3000);
+      }
+
+      // ── DOOR CONTROL ──────────────────────────────────────
+      async function manualOpen() {
+        const res = await api("/api/door/open", { method: "POST" });
+        if (res) {
+          const icon = document.getElementById("door-icon");
+          const status = document.getElementById("door-status");
+          icon.className = "door-icon unlocked"; icon.textContent = "🔓";
+          status.textContent = "Đang mở...";
+          toast("Đã gửi lệnh mở cửa!");
+          setTimeout(() => { icon.className = "door-icon locked"; icon.textContent = "🔒"; status.textContent = "Đang khóa"; }, 5000);
+        }
+      }
+
+      // ── CONFIG ────────────────────────────────────────────
+      async function loadConfig() {
+        const cfg = await api("/api/config");
+        if (!cfg) return;
+        document.getElementById("cfg-token").value = cfg.telegram_token || "";
+        document.getElementById("cfg-chatid").value = cfg.telegram_chat_id || "";
+        document.getElementById("cfg-doortime").value = cfg.door_time || 5;
+      }
+
+      async function saveConfig() {
+        const token = document.getElementById("cfg-token").value.trim();
+        const chatid = document.getElementById("cfg-chatid").value.trim();
+        const doortime = document.getElementById("cfg-doortime").value;
+        const res = await api("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telegram_token: token, telegram_chat_id: chatid, door_time: parseInt(doortime) }),
+        });
+        if (res?.message) toast("💾 Đã lưu cài đặt!");
+      }
+
+      async function testTelegram() {
+        toast("Đang gửi tin nhắn test...");
+        const res = await api("/api/config/test_telegram", { method: "POST" });
+        if (res?.message) toast("📨 Đã gửi! Kiểm tra Telegram.");
+      }
+
+      // ── MODAL ─────────────────────────────────────────────
+      function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+      document.querySelectorAll(".modal-bg").forEach(m => {
+        m.addEventListener("click", e => { if (e.target === m) { stopCamera(); closeModal(m.id); } });
+      });
+
+      // ── AUDIO ─────────────────────────────────────────────
+      const audioMap = {
+        'motion': '/voice/NhinCam.mp3',
+        'face_ok': '/voice/DoTay.mp3',
+        'face_fail': '/voice/NguoiLa.mp3',
+        'no_face': '/voice/KhongCoKhuonMat.mp3',
+        'palm_ok': '/voice/XinChao.mp3',
+        'palm_fail': '/voice/KhongXacThuc.mp3'
+      };
+      const audioPlayer = new Audio();
+
+      // ── SSE ───────────────────────────────────────────────
+      function initSSE() {
+        const evtSource = new EventSource(API + "/api/events/stream");
+        evtSource.onmessage = function(e) {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg && msg.type && audioMap[msg.type]) {
+              audioPlayer.src = API + audioMap[msg.type];
+              audioPlayer.play().catch(err => {
+                toast("🔊 Âm thanh bị chặn. Vui lòng click/chạm vào màn hình để cho phép.");
+              });
+            }
+            if (msg.type === "face_ok" || msg.type === "motion") refreshStatus();
+          } catch(err) { console.error(err); }
+        };
+        evtSource.onerror = function(err) { console.error("SSE Error:", err); };
+      }
+
+      document.body.addEventListener("click", () => {
+        audioPlayer.play().then(() => { audioPlayer.pause(); }).catch(e => {});
+      }, { once: true });
+
+      // ── AUTO DETECT ───────────────────────────────────────
+      let isAutoDetectEnabled = true;
+      async function toggleAutoDetect() {
+        try {
+          const action = isAutoDetectEnabled ? "off" : "on";
+          const res = await fetch(API + `/api/door/auto_${action}`, { method: "POST" });
+          if (res.ok) {
+            isAutoDetectEnabled = !isAutoDetectEnabled;
+            const buttons = [document.getElementById("btn-toggle-auto"), document.getElementById("btn-toggle-auto-dash")];
+            buttons.forEach(btn => {
+              if (!btn) return;
+              if (isAutoDetectEnabled) {
+                btn.className = "btn btn-success";
+                btn.textContent = "🟢 ĐANG BẬT";
+              } else {
+                btn.className = "btn btn-danger";
+                btn.textContent = "🔴 ĐANG TẮT";
+              }
+            });
+            toast(isAutoDetectEnabled ? "Đã BẬT tự động nhận diện khuôn mặt" : "Đã TẮT tự động nhận diện. Chỉ hoạt động khi Web yêu cầu.");
+          } else {
+            toast("Lỗi khi điều khiển ESP32", "error");
+          }
+        } catch(e) { toast("Lỗi kết nối", "error"); }
+      }
+
+      // ── INIT ──────────────────────────────────────────────
+      refreshStatus();
+      setInterval(refreshStatus, 30000);
+      initSSE();
+    </script>
+  </body>
+</html>
