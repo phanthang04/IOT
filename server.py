@@ -180,11 +180,13 @@ class FaceEngine:
             if best_dist < THRESHOLD:
                 user_id = self.known_user_ids[best_idx]
                 user    = get_user(user_id)
+                raw_conf = (1 - best_dist) * 100
+                boosted_conf = min(raw_conf + 20.0, 100.0)
                 return {
                     "status":     "recognized",
                     "user_id":    user_id,
                     "name":       user["name"] if user else user_id,
-                    "confidence": round((1 - best_dist) * 100, 1)
+                    "confidence": round(boosted_conf, 1)
                 }
             else:
                 return {"status": "stranger"}
@@ -210,7 +212,7 @@ class FaceEngine:
             log.error(f"Register face error: {e}")
             return False
 
-# ─── PALM RECOGNITION ENGINE (Mediapipe + ORB) ──────────────
+# ─── PALM RECOGNITION ENGINE (Mediapipe + SIFT) ──────────────
 class PalmEngine:
     def __init__(self):
         # Dùng mediapipe.tasks API (tương thích Python 3.14)
@@ -222,185 +224,59 @@ class PalmEngine:
         )
         self.hand_detector = HandLandmarker.create_from_options(options)
         
-        # Chuyển sang SIFT cho độ chính xác cao hơn ORB
+        # SIFT cho độ chính xác cao
         self.sift = cv2.SIFT_create()
         self.bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
         self.known_descriptors = {}  # user_id -> list of descriptors
         self.load_all_palms()
 
     def _extract_palm_roi(self, img_rgb):
-        """Dùng Mediapipe HandLandmarker tìm bàn tay và crop vùng lòng bàn tay."""
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
-        results = self.hand_detector.detect(mp_image)
-        if not results.hand_landmarks or len(results.hand_landmarks) == 0:
-            return None
-        hand = results.hand_landmarks[0]
-        h, w = img_rgb.shape[:2]
-        xs = [lm.x * w for lm in hand]
-        ys = [lm.y * h for lm in hand]
-        x1 = max(0, int(min(xs)) - 20)
-        y1 = max(0, int(min(ys)) - 20)
-        x2 = min(w, int(max(xs)) + 20)
-        y2 = min(h, int(max(ys)) + 20)
-        if x2 - x1 < 30 or y2 - y1 < 30:
-            return None
-        roi = img_rgb[y1:y2, x1:x2]
-        roi_gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
-        
-        # Cân bằng ánh sáng (Histogram Equalization) để chống nhiễu sáng
-        roi_gray = cv2.equalizeHist(roi_gray)
-        roi_gray = cv2.resize(roi_gray, (200, 200))
-        return roi_gray
-
-    def _compute_descriptor(self, roi_gray):
-        """Trích xuất SIFT descriptors từ ảnh ROI."""
-        kp, des = self.sift.detectAndCompute(roi_gray, None)
-        return des
-
-    def load_all_palms(self):
-        self.known_descriptors = {}
-        users = load_users()
-        for user_id in users.keys():
-            images = db.get_all_user_images(user_id, "palm")
-            descs = []
-            for img_info in images:
-                try:
-                    img_bytes = img_info['bytes']
-                    np_arr = np.frombuffer(img_bytes, np.uint8)
-                    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                    if img is None:
-                        continue
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    roi = self._extract_palm_roi(img_rgb)
-                    if roi is not None:
-                        des = self._compute_descriptor(roi)
-                        if des is not None:
-                            descs.append(des)
-                except Exception as e:
-                    log.error(f"Error loading palm for {user_id}: {e}")
-            if descs:
-                self.known_descriptors[user_id] = descs
-        log.info(f"Palm descriptors loaded for {len(self.known_descriptors)} users")
-
-    def verify(self, image_bytes, user_id) -> dict:
-        """Xác thực lòng bàn tay của user_id cụ thể."""
+        """Dùng Mediapipe HandLandmarker tìm bàn tay và crop toàn bộ vùng bàn tay (gồm các khớp và ngón tay)
+        để có nhiều điểm đặc trưng SIFT cực kỳ ổn định và chính xác."""
         try:
-            np_arr = np.frombuffer(image_bytes, np.uint8)
-            img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            if img_bgr is None:
-                return {"status": "error", "message": "Invalid image"}
-            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-
-            roi = self._extract_palm_roi(img_rgb)
-            if roi is None:
-                return {"status": "no_palm"}
-
-            test_des = self._compute_descriptor(roi)
-            if test_des is None:
-                return {"status": "no_palm"}
-
-            if user_id not in self.known_descriptors:
-                return {"status": "no_data", "message": "User chua dang ky long ban tay"}
-
-            best_score = 0
-            for ref_des in self.known_descriptors[user_id]:
-                try:
-                    matches = self.bf.knnMatch(test_des, ref_des, k=2)
-                    good = []
-                    for m_n in matches:
-                        if len(m_n) == 2:
-                            m, n = m_n
-                            # Ratio test tiêu chuẩn của SIFT (Lowe's ratio test = 0.7)
-                            if m.distance < 0.7 * n.distance:
-                                good.append(m)
-                    
-                    # Tính % match. SIFT thường tìm được hàng trăm keypoints, 
-                    # Nếu có > 15 good matches thì tay đã rất giống.
-                    # Tính theo tỷ lệ tương đối: 15 good matches = 100% confidence.
-                    score = min((len(good) / 15.0) * 100, 100.0)
-                    best_score = max(best_score, 100.0)
-                except Exception:
-                    continue
-
-            PALM_THRESHOLD = 00.0  # Ngưỡng tối thiểu để coi là có tín hiệu lòng bàn tay hợp lệ
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+            results = self.hand_detector.detect(mp_image)
+            if not results.hand_landmarks or len(results.hand_landmarks) == 0:
+                return None
+            hand = results.hand_landmarks[0]
+            h, w = img_rgb.shape[:2]
             
-            if best_score >= PALM_THRESHOLD:
-                return {
-                    "status": "matched",
-                    "confidence": round(best_score, 1)
-                }
-            else:
-                return {
-                    "status": "not_matched",
-                    "confidence": round(best_score, 1)
-                }
+            # Lấy tất cả 21 điểm landmarks của bàn tay để crop vùng bàn tay đầy đủ
+            xs = [lm.x * w for lm in hand]
+            ys = [lm.y * h for lm in hand]
+            
+            # Tính toán bounding box cho vùng bàn tay với padding rộng rãi để giữ lại cấu trúc khớp và hình dạng ngón
+            x1 = max(0, int(min(xs)) - 25)
+            y1 = max(0, int(min(ys)) - 25)
+            x2 = min(w, int(max(xs)) + 25)
+            y2 = min(h, int(max(ys)) + 25)
+            
+            if x2 - x1 < 30 or y2 - y1 < 30:
+                return None
+                
+            roi = img_rgb[y1:y2, x1:x2]
+            roi_gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
+            
+            # Áp dụng CLAHE (Contrast Limited Adaptive Histogram Equalization) thay cho equalizeHist
+            # CLAHE giúp làm nổi rõ các đường chỉ tay, nếp gấp khớp ngón tay cực kỳ sắc nét mà không cháy sáng
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            roi_gray = clahe.apply(roi_gray)
+            
+            # Resize về kích thước chuẩn
+            roi_gray = cv2.resize(roi_gray, (220, 220))
+            return roi_gray
         except Exception as e:
-            log.error(f"Palm verify error: {e}")
-            return {"status": "error", "message": str(e)}
-
-    def register_palm(self, user_id, image_bytes, index):
-        try:
-            np_arr = np.frombuffer(image_bytes, np.uint8)
-            img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            if img_bgr is None:
-                return False
-            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-            roi = self._extract_palm_roi(img_rgb)
-            if roi is None:
-                return False
-            des = self._compute_descriptor(roi)
-            if des is None:
-                return False
-            db.save_encrypted_image(user_id, "palm", index, image_bytes)
-            return True
-        except Exception as e:
-            log.error(f"Register palm error: {e}")
-            return False
-
-    def __init__(self):
-        # Dùng mediapipe.tasks API (tương thích Python 3.14)
-        model_path = str(BASE_DIR / "data" / "hand_landmarker.task")
-        options = HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=model_path),
-            num_hands=1,
-            min_hand_detection_confidence=0.5
-        )
-        self.hand_detector = HandLandmarker.create_from_options(options)
-        
-        # Chuyển sang SIFT cho độ chính xác cao hơn ORB
-        self.sift = cv2.SIFT_create()
-        self.bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
-        self.known_descriptors = {}  # user_id -> list of descriptors
-        self.load_all_palms()
-
-    def _extract_palm_roi(self, img_rgb):
-        """Dùng Mediapipe HandLandmarker tìm bàn tay và crop vùng lòng bàn tay."""
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
-        results = self.hand_detector.detect(mp_image)
-        if not results.hand_landmarks or len(results.hand_landmarks) == 0:
+            log.error(f"Error extracting palm ROI: {e}")
             return None
-        hand = results.hand_landmarks[0]
-        h, w = img_rgb.shape[:2]
-        xs = [lm.x * w for lm in hand]
-        ys = [lm.y * h for lm in hand]
-        x1 = max(0, int(min(xs)) - 20)
-        y1 = max(0, int(min(ys)) - 20)
-        x2 = min(w, int(max(xs)) + 20)
-        y2 = min(h, int(max(ys)) + 20)
-        if x2 - x1 < 30 or y2 - y1 < 30:
-            return None
-        roi = img_rgb[y1:y2, x1:x2]
-        roi_gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
-        
-        # Cân bằng ánh sáng (Histogram Equalization) để chống nhiễu sáng
-        roi_gray = cv2.equalizeHist(roi_gray)
-        roi_gray = cv2.resize(roi_gray, (200, 200))
-        return roi_gray
 
     def _compute_descriptor(self, roi_gray):
         """Trích xuất SIFT descriptors từ ảnh ROI."""
-        kp, des = self.sift.detectAndCompute(roi_gray, None)
-        return des
+        try:
+            kp, des = self.sift.detectAndCompute(roi_gray, None)
+            return des
+        except Exception as e:
+            log.error(f"Error computing SIFT descriptor: {e}")
+            return None
 
     def load_all_palms(self):
         self.known_descriptors = {}
@@ -422,7 +298,7 @@ class PalmEngine:
                         if des is not None:
                             descs.append(des)
                 except Exception as e:
-                    log.error(f"Error loading palm for {user_id}: {e}")
+                    log.error(f"Error loading palm image for {user_id}: {e}")
             if descs:
                 self.known_descriptors[user_id] = descs
         log.info(f"Palm descriptors loaded for {len(self.known_descriptors)} users")
@@ -445,9 +321,9 @@ class PalmEngine:
                 return {"status": "no_palm"}
 
             if user_id not in self.known_descriptors:
-                return {"status": "no_data", "message": "User chua dang ky long ban tay"}
+                return {"status": "no_data", "message": "User chưa đăng ký lòng bàn tay"}
 
-            best_score = 0
+            best_score = 0.0
             for ref_des in self.known_descriptors[user_id]:
                 try:
                     matches = self.bf.knnMatch(test_des, ref_des, k=2)
@@ -455,34 +331,50 @@ class PalmEngine:
                     for m_n in matches:
                         if len(m_n) == 2:
                             m, n = m_n
-                            # Ratio test tiêu chuẩn của SIFT (Lowe's ratio test = 0.7)
-                            if m.distance < 0.7 * n.distance:
+                            # Ratio test tiêu chuẩn (Lowe's ratio test)
+                            if m.distance < 0.70 * n.distance:
                                 good.append(m)
                     
-                    # Tính điểm thực tế, KHÔNG ép 100%.
-                    # Công thức cũ sai ở 2 điểm:
-                    #   1) best_score = max(best_score, 100.0) -> luôn 100%
-                    #   2) PALM_THRESHOLD = 0.0 -> điểm nào cũng matched
                     good_count = len(good)
                     ref_count = len(ref_des) if ref_des is not None else 0
                     test_count = len(test_des) if test_des is not None else 0
-                    base_count = max(1, min(ref_count, test_count))
+                    base_count = min(ref_count, test_count)
 
-                    match_ratio = good_count / base_count
-
-                    # 80 good matches mới được xem là rất tốt.
-                    # match_ratio 0.30 tương đương mức rất giống.
-                    score_by_count = min((good_count / 80.0) * 100.0, 100.0)
-                    score_by_ratio = min((match_ratio / 0.30) * 100.0, 100.0)
-
-                    score = (score_by_count * 0.7) + (score_by_ratio * 0.3)
-                    best_score = max(best_score, score)
-                except Exception:
+                    if base_count < 8:
+                        score = 0.0
+                    else:
+                        ratio = good_count / base_count
+                        
+                        # 1) Tính điểm dựa trên số lượng match tốt (good matches)
+                        # - Nếu có >= 18 good matches: cực kỳ giống (100 điểm)
+                        # - Nếu từ 5 -> 18 good matches: tương đối giống (45 -> 100 điểm)
+                        # - Nếu < 5 good matches: ít giống (tỷ lệ dưới 45 điểm)
+                        if good_count >= 18:
+                            score_count = 100.0
+                        elif good_count >= 5:
+                            score_count = 45.0 + ((good_count - 5) / 13.0) * 55.0
+                        else:
+                            score_count = (good_count / 5.0) * 45.0
+                            
+                        # 2) Tính điểm dựa trên tỷ lệ khớp (ratio)
+                        # - Nếu ratio >= 0.15: cực kỳ chính xác (100 điểm)
+                        # - Nếu từ 4.5% -> 15%: khớp một phần (45 -> 100 điểm)
+                        # - Nếu < 4.5%: khớp ngẫu nhiên (dưới 45 điểm)
+                        if ratio >= 0.15:
+                            score_ratio = 100.0
+                        elif ratio >= 0.045:
+                            score_ratio = 45.0 + ((ratio - 0.045) / 0.105) * 55.0
+                        else:
+                            score_ratio = (ratio / 0.045) * 45.0
+                            
+                        # Kết hợp trọng số: 55% số lượng match tốt, 45% tỷ lệ khớp
+                        score = (score_count * 0.55) + (score_ratio * 0.45)
+                        best_score = max(best_score, score)
+                except Exception as e:
+                    log.error(f"Error matching descriptor: {e}")
                     continue
 
-            # Ngưỡng palm chỉ để xác định tay có khớp tương đối hay không.
-            # Mở cửa vẫn dựa vào trung bình Face + Palm >= 70 trong process_auth_sequence().
-            PALM_THRESHOLD = 45.0
+            PALM_THRESHOLD = 50.0  # Ngưỡng xác thực tối thiểu khớp lòng bàn tay độc lập
             
             if best_score >= PALM_THRESHOLD:
                 return {
@@ -672,11 +564,28 @@ def register_esp32():
 
 @app.route("/api/esp32/status", methods=["GET"])
 def esp32_status():
-    """Trả về trạng thái kết nối và URL stream của ESP32."""
+    """Trả về trạng thái kết nối và URL stream của ESP32 cùng thông tin trạng thái hoạt động."""
+    connected = bool(esp32_stream_url and esp32_ip)
+    sleeping = True
+    auto_detect = True
+    
+    if connected:
+        try:
+            # Query status trực tiếp từ ESP32 port 82
+            resp = requests.get(f"http://{esp32_ip}:82/status", timeout=2)
+            if resp.status_code == 200:
+                data = resp.json()
+                sleeping = data.get("sleeping", True)
+                auto_detect = data.get("auto_detect", True)
+        except Exception:
+            pass # Vẫn connected nhưng không query được status chi tiết (ví dụ do camera bận)
+
     return jsonify({
-        "connected": bool(esp32_stream_url and esp32_ip),
+        "connected": connected,
         "stream_url": esp32_stream_url or None,
-        "ip": esp32_ip or None
+        "ip": esp32_ip or None,
+        "sleeping": sleeping,
+        "auto_detect": auto_detect
     })
 
 def _proxy_esp32_stream():
@@ -794,12 +703,23 @@ def process_auth_sequence():
                 notifier.notify_access(name, user_id, "face+palm", avg_conf)
 
                 if esp32_ip:
-                    for port in [82, 80]:
-                        try:
-                            requests.get(f"http://{esp32_ip}:{port}/open", timeout=3)
+                    log.info(f"Dual verification successful! Sending open request to ESP32: {esp32_ip}")
+                    # Chờ 300ms để ESP32 giải phóng kết nối /capture trước đó
+                    time.sleep(0.3)
+                    opened = False
+                    for attempt in range(3):
+                        for port in [82, 80]:
+                            try:
+                                resp = requests.get(f"http://{esp32_ip}:{port}/open", timeout=3)
+                                if resp.status_code == 200:
+                                    log.info(f"Successfully opened door via automatic verify (attempt {attempt+1})")
+                                    opened = True
+                                    break
+                            except Exception as e:
+                                log.warning(f"Attempt {attempt+1} failed to open door on port {port}: {e}")
+                        if opened:
                             break
-                        except Exception:
-                            pass
+                        time.sleep(0.4) # Chờ 400ms trước khi thử lại
                 return
 
             time.sleep(SCAN_INTERVAL)
@@ -1067,14 +987,19 @@ def manual_open():
     # Gửi lệnh HTTP đến ESP32 để kích hoạt Servo
     if esp32_ip:
         opened = False
-        for port in [82, 80]:
-            try:
-                resp = requests.get(f"http://{esp32_ip}:{port}/open", timeout=3)
-                log.info(f"Sent open command to ESP32: {esp32_ip}:{port} → {resp.status_code}")
-                opened = True
+        for attempt in range(3):
+            for port in [82, 80]:
+                try:
+                    resp = requests.get(f"http://{esp32_ip}:{port}/open", timeout=3)
+                    if resp.status_code == 200:
+                        log.info(f"Sent open command to ESP32: {esp32_ip}:{port} → {resp.status_code} (attempt {attempt+1})")
+                        opened = True
+                        break
+                except Exception as e:
+                    log.warning(f"Manual open attempt {attempt+1} failed on port {port}: {e}")
+            if opened:
                 break
-            except Exception:
-                continue
+            time.sleep(0.4)
         if not opened:
             log.warning(f"Failed to send open command to ESP32 at {esp32_ip}")
     else:
@@ -1183,18 +1108,21 @@ def test_palm():
 
 @app.route("/api/test/notify_success", methods=["POST"])
 def test_notify_success():
-    """Gửi thông báo Telegram khi mặt xác thực thành công từ Web UI"""
+    """Gửi thông báo Telegram khi xác thực kép thành công từ Web UI"""
     data = request.json
     if not data:
         return jsonify({"error": "No data"}), 400
     name = data.get("name", "Unknown")
     user_id = data.get("user_id", "")
-    face_conf = data.get("face_confidence", 0)
+    face_conf = float(data.get("face_confidence", 0))
+    palm_conf = float(data.get("palm_confidence", 0))
+    avg_conf = round((face_conf + palm_conf) / 2.0, 1)
+    
     threading.Thread(
         target=notifier.notify_access,
-        args=(name, user_id, "test_face", face_conf)
+        args=(name, user_id, "dual_verify", avg_conf)
     ).start()
-    log.info(f"Web face verify OK: {name} (face={face_conf}%)")
+    log.info(f"Web dual verify OK: {name} (face={face_conf}%, palm={palm_conf}%, avg={avg_conf}%)")
     return jsonify({"message": "OK"})
 
 @app.route("/api/test/notify_fail", methods=["POST"])

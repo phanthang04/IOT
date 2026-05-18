@@ -57,6 +57,11 @@ WiFiClient httpClient;
 
 //========================================
 
+// Các biến quản lý chế độ ngủ của Camera
+volatile bool isCameraSleeping = false;
+volatile unsigned long lastActiveTime = 0;
+const unsigned long cameraSleepDelay = 15000; // 15 giây không hoạt động sẽ ngủ
+
 void setupCamera() {
   camera_config_t config;
   config.ledc_channel =
@@ -91,6 +96,28 @@ void setupCamera() {
   }
 }
 
+void wakeCamera() {
+  if (isCameraSleeping) {
+    Serial.println(">>> WAKING UP CAMERA <<<");
+    pinMode(PWDN_GPIO_NUM, OUTPUT);
+    digitalWrite(PWDN_GPIO_NUM, LOW); // Cấp nguồn cho camera
+    delay(500); // Đợi nguồn điện ổn định
+    setupCamera(); // Khởi tạo driver camera
+    isCameraSleeping = false;
+    delay(500); // Đợi cảm biến camera thích nghi với ánh sáng (AGC/AEC)
+  }
+}
+
+void sleepCamera() {
+  if (!isCameraSleeping) {
+    Serial.println(">>> PUTTING CAMERA TO SLEEP <<<");
+    esp_camera_deinit(); // Giải phóng tài nguyên camera
+    pinMode(PWDN_GPIO_NUM, OUTPUT);
+    digitalWrite(PWDN_GPIO_NUM, HIGH); // Tắt nguồn camera (PWDN Active High)
+    isCameraSleeping = true;
+  }
+}
+
 //======= MJPEG STREAMING SERVER (port 81) ========
 
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -103,6 +130,9 @@ static const char *STREAM_PART =
 httpd_handle_t stream_httpd = NULL;
 
 static esp_err_t stream_handler(httpd_req_t *req) {
+  wakeCamera();
+  lastActiveTime = millis();
+
   camera_fb_t *fb = NULL;
   esp_err_t res = ESP_OK;
   char part_buf[64];
@@ -112,6 +142,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
 
   while (true) {
+    lastActiveTime = millis(); // Cập nhật liên tục khi đang stream để không bị ngủ
     fb = esp_camera_fb_get();
     if (!fb) {
       res = ESP_FAIL;
@@ -161,12 +192,16 @@ static esp_err_t autoon_handler(httpd_req_t *req) {
 static esp_err_t autooff_handler(httpd_req_t *req) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   isAutoDetect = false;
+  sleepCamera(); // Cho camera ngủ ngay lập tức
   httpd_resp_send(req, "OK", 2);
-  Serial.println("Auto Detect: OFF");
+  Serial.println("Auto Detect: OFF - Sleeping Camera");
   return ESP_OK;
 }
 
 static esp_err_t capture_handler(httpd_req_t *req) {
+  wakeCamera();
+  lastActiveTime = millis();
+
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     httpd_resp_send_500(req);
@@ -177,6 +212,27 @@ static esp_err_t capture_handler(httpd_req_t *req) {
   esp_err_t res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
   esp_camera_fb_return(fb);
   return res;
+}
+
+static esp_err_t wake_handler(httpd_req_t *req) {
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  wakeCamera();
+  lastActiveTime = millis();
+  const char *resp = "WOKEN";
+  httpd_resp_send(req, resp, strlen(resp));
+  Serial.println(">>> Nhan lenh /wake tu Server <<<");
+  return ESP_OK;
+}
+
+static esp_err_t status_handler(httpd_req_t *req) {
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  char resp[128];
+  snprintf(resp, sizeof(resp), "{\"sleeping\":%s,\"auto_detect\":%s}", 
+           isCameraSleeping ? "true" : "false",
+           isAutoDetect ? "true" : "false");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_send(req, resp, strlen(resp));
+  return ESP_OK;
 }
 
 httpd_handle_t cmd_httpd = NULL;
@@ -204,7 +260,7 @@ void startStreamServer() {
   config_cmd.server_port = 82;
   config_cmd.ctrl_port = 32769; // BẮT BUỘC KHÁC 32768 ĐỂ TRÁNH LỖI (112)
   config_cmd.max_uri_handlers =
-      8; // Đủ cho 4 route: /open, /capture, /auto_on, /auto_off
+      10; // Đủ cho 6 route: /open, /capture, /auto_on, /auto_off, /wake, /status
 
   httpd_uri_t open_uri = {.uri = "/open",
                           .method = HTTP_GET,
@@ -222,12 +278,22 @@ void startStreamServer() {
                              .method = HTTP_GET,
                              .handler = autooff_handler,
                              .user_ctx = NULL};
+  httpd_uri_t wake_uri = {.uri = "/wake",
+                          .method = HTTP_GET,
+                          .handler = wake_handler,
+                          .user_ctx = NULL};
+  httpd_uri_t status_uri = {.uri = "/status",
+                            .method = HTTP_GET,
+                            .handler = status_handler,
+                            .user_ctx = NULL};
 
   if (httpd_start(&cmd_httpd, &config_cmd) == ESP_OK) {
     httpd_register_uri_handler(cmd_httpd, &open_uri);
     httpd_register_uri_handler(cmd_httpd, &capture_uri);
     httpd_register_uri_handler(cmd_httpd, &autoon_uri);
     httpd_register_uri_handler(cmd_httpd, &autooff_uri);
+    httpd_register_uri_handler(cmd_httpd, &wake_uri);
+    httpd_register_uri_handler(cmd_httpd, &status_uri);
     Serial.println("Command: http://" + WiFi.localIP().toString() + ":82");
   }
 }
@@ -283,6 +349,8 @@ void setup() {
   pinMode(PIR_PIN, INPUT_PULLDOWN); // Dùng điện trở kéo xuống để chống nhiễu
 
   setupCamera();
+  isCameraSleeping = false;
+  lastActiveTime = millis(); // Khởi tạo thời gian hoạt động
 
   // Khởi tạo Servo SAU khi setup camera
   ESP32PWM::allocateTimer(0);
@@ -314,17 +382,26 @@ void loop() {
     return;
   }
 
-  // Đóng cửa tự động sau 3 giây (Non-blocking)
-  if (isDoorOpen && (millis() - doorOpenTime >= 3000)) {
+  // Đóng cửa tự động sau 2 giây (Non-blocking)
+  if (isDoorOpen && (millis() - doorOpenTime >= 2000)) {
     Serial.println("CLOSE");
     doorServo.write(0);
     isDoorOpen = false;
   }
 
+  // Tự động cho camera ngủ sau cameraSleepDelay nếu không có hoạt động
+  if (!isCameraSleeping && (millis() - lastActiveTime >= cameraSleepDelay)) {
+    sleepCamera();
+  }
+
   if (isAutoDetect && digitalRead(PIR_PIN) == HIGH) {
     if (millis() - lastMotionTime >= motionCooldown || lastMotionTime == 0) {
       lastMotionTime = millis();
+      lastActiveTime = millis(); // Giữ camera thức
       Serial.println("=== Motion Detected ===");
+
+      // Đánh thức camera ngay lập tức
+      wakeCamera();
 
       // Gửi báo cáo chuyển động lên Server
       HTTPClient http;

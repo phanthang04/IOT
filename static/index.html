@@ -907,6 +907,7 @@
             </div>
           </div>
           <div class="card" style="text-align:center;padding:20px">
+            <div id="camera-stream-status" style="font-weight:600;margin-bottom:12px;color:var(--text-muted);font-size:14px;"></div>
             <img id="camera-stream" src="" alt="Camera Stream" style="max-width:100%;border-radius:14px;border:2px solid var(--border-bright);box-shadow:var(--shadow);" />
           </div>
         </section>
@@ -1042,10 +1043,21 @@
         if (id === "dashboard") refreshStatus();
         if (id === "door") loadConfig();
         const cameraStream = document.getElementById("camera-stream");
-        if (id === "camera" && cameraStream.src.indexOf("/api/stream") === -1) {
-          cameraStream.src = "/api/stream";
+        const cameraStatus = document.getElementById("camera-stream-status");
+        if (id === "camera") {
+          if (cameraStatus) cameraStatus.innerHTML = '<span style="color:var(--accent)">🔵 Đang kết nối và đánh thức camera...</span>';
+          if (cameraStream.src.indexOf("/api/stream") === -1) {
+            cameraStream.src = "/api/stream";
+            cameraStream.onload = () => {
+              if (cameraStatus) cameraStatus.innerHTML = '<span style="color:var(--green)">🟢 Luồng camera trực tiếp (Đã đánh thức)</span>';
+            };
+            cameraStream.onerror = () => {
+              if (cameraStatus) cameraStatus.innerHTML = '<span style="color:var(--red)">🔴 Lỗi kết nối luồng camera</span>';
+            };
+          }
         } else if (id !== "camera") {
           cameraStream.src = "";
+          if (cameraStatus) cameraStatus.textContent = "";
         }
       }
 
@@ -1094,7 +1106,11 @@
             pill.style.borderColor = "rgba(16,185,129,0.2)";
             pill.style.color = "var(--green)";
             dot.style.background = "var(--green)";
-            text.textContent = "ESP32-CAM online";
+            if (espStatus.sleeping) {
+              text.textContent = "ESP32-CAM online · Ngủ 💤";
+            } else {
+              text.textContent = "ESP32-CAM online · Thức 🎥";
+            }
           } else {
             pill.style.background = "var(--red-light)";
             pill.style.borderColor = "rgba(239,68,68,0.2)";
@@ -1598,19 +1614,40 @@
           resetVerifyUI(); return;
         }
 
+        const faceConf = parseFloat(faceData.confidence) || 0;
+        const palmConf = parseFloat(palmData.confidence) || 0;
+        const avgConf = Math.round((faceConf + palmConf) / 2.0);
+
+        if (avgConf < 70) {
+          audioPlayer.src = API + audioMap['palm_fail'];
+          audioPlayer.play().catch(e => {});
+          dashStatus.innerHTML = `TRUNG BÌNH DƯỚI 70% (${avgConf}%)! TỪ CHỐI.`;
+          dashStatus.style.color = "var(--orange)";
+          dashPalm.style.borderColor = "var(--orange)";
+          dashPalm.style.background = "var(--orange-light)";
+          dashPalmInfo.innerHTML = `<b style="color:var(--orange)">${palmConf}%</b><br><small>Tr.bình: ${avgConf}%</small>`;
+          camBox.style.borderColor = "";
+          fetch(API + "/api/test/notify_fail", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: faceData.name, face_confidence: faceConf, palm_confidence: palmConf, reason: `Trung bình Face + Palm đạt ${avgConf}%, chưa đủ 70%` }),
+          }).catch(e => console.error(e));
+          resetVerifyUI(); return;
+        }
+
         audioPlayer.src = API + audioMap['palm_ok'];
         audioPlayer.play().catch(e => {});
         progressFill.style.width = "100%";
         camBox.style.borderColor = "var(--green)";
         dashPalm.style.borderColor = "var(--green)";
         dashPalm.style.background = "var(--green-light)";
-        dashPalmInfo.innerHTML = `<b style="color:var(--green)">${palmData.confidence}%</b>`;
-        dashStatus.innerHTML = "🔓 XÁC THỰC THÀNH CÔNG!";
+        dashPalmInfo.innerHTML = `<b style="color:var(--green)">${palmConf}%</b><br><small>Tr.bình: ${avgConf}%</small>`;
+        dashStatus.innerHTML = `🔓 XÁC THỰC THÀNH CÔNG (${avgConf}%)!`;
         dashStatus.style.color = "var(--green)";
         fetch(API + "/api/test/notify_success", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: faceData.user_id, name: faceData.name, face_confidence: faceData.confidence, palm_confidence: palmData.confidence }),
+          body: JSON.stringify({ user_id: faceData.user_id, name: faceData.name, face_confidence: faceConf, palm_confidence: palmConf }),
         });
         toast("🔓 Xác thực kép thành công! Đang kích hoạt Servo...");
         camBox.style.borderColor = "";
@@ -1632,7 +1669,7 @@
           icon.className = "door-icon unlocked"; icon.textContent = "🔓";
           status.textContent = "Đang mở...";
           toast("Đã gửi lệnh mở cửa!");
-          setTimeout(() => { icon.className = "door-icon locked"; icon.textContent = "🔒"; status.textContent = "Đang khóa"; }, 5000);
+          setTimeout(() => { icon.className = "door-icon locked"; icon.textContent = "🔒"; status.textContent = "Đang khóa"; }, 2000);
         }
       }
 
