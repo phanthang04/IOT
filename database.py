@@ -70,6 +70,20 @@ def init_db():
         )
     ''')
     
+    # Bảng lịch sử ra vào
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            name TEXT,
+            method TEXT,
+            confidence REAL,
+            status TEXT,
+            timestamp TEXT,
+            reason TEXT
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -170,3 +184,31 @@ def get_all_user_images(user_id, img_type):
         except Exception as e:
             log.error(f"Decrypt error for {user_id}/{img_type}/{row['index_num']}: {e}")
     return images
+
+# --- Các hàm lịch sử ra vào ---
+def log_access(user_id, name, method, confidence, status, reason=None):
+    from datetime import datetime
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO access_logs (user_id, name, method, confidence, status, timestamp, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, name, method, confidence, status, datetime.now().isoformat(), reason))
+    conn.commit()
+    conn.close()
+
+def get_access_logs(limit=100):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM access_logs ORDER BY timestamp DESC LIMIT ?", (limit,))
+    rows = c.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def clear_access_logs():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("DELETE FROM access_logs")
+    conn.commit()
+    conn.close()
+

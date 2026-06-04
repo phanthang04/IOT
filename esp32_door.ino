@@ -22,15 +22,11 @@ MJPEG Stream: http://<ESP32_IP>:81/stream
 #include <WiFi.h>
 
 //================ WIFI ==================
-const char *ssid = "TN-WF-T5";
-const char *password = "TriNam123$$";
+const char *ssid = "TQT";
+const char *password = "11111111";
 
-//=============== SERVER =================
-// ⚠️ Đổi thành IP máy tính của bạn (xem từ log server.py)
-const char *SERVER = "http://192.168.99.172:5000";
+const char *SERVER = "http://10.68.234.62:5000";
 
-//=============== PIN ====================
-// Đổi sang chân 14 vì chân 12 là strapping pin, rất dễ lỗi không xuất được xung PWM
 #define SERVO_PIN 14
 #define PIR_PIN 15
 
@@ -55,14 +51,16 @@ WiFiClient httpClient;
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
-//========================================
-
-// Các biến quản lý chế độ ngủ của Camera
 volatile bool isCameraSleeping = false;
 volatile unsigned long lastActiveTime = 0;
 const unsigned long cameraSleepDelay = 15000; // 15 giây không hoạt động sẽ ngủ
 
 void setupCamera() {
+  // Bật nguồn camera thủ công để đảm bảo cảm biến không bị treo
+  pinMode(PWDN_GPIO_NUM, OUTPUT);
+  digitalWrite(PWDN_GPIO_NUM, LOW);
+  delay(100);
+
   camera_config_t config;
   config.ledc_channel =
       LEDC_CHANNEL_7; // Tránh xung đột với Servo (thường dùng Channel 0)
@@ -83,11 +81,14 @@ void setupCamera() {
   config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
+  config.xclk_freq_hz =
+      10000000; // Giảm xung nhịp xuống 10MHz để chống treo camera
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_SVGA; // Tăng độ phân giải để nhận dạng tốt hơn
-  config.jpeg_quality = 8;            // Chất lượng ảnh cao hơn
-  config.fb_count = 2;
+  config.frame_size =
+      FRAMESIZE_VGA; // Giảm xuống VGA (640x480) để đảm bảo không bị thiếu RAM
+  config.jpeg_quality =
+      12; // Tăng số này lên (10-12) để giảm kích thước ảnh, chống tràn bộ nhớ
+  config.fb_count = 1; // Chỉ dùng 1 frame buffer để tiết kiệm RAM
 
   if (esp_camera_init(&config) != ESP_OK) {
     Serial.println("Camera FAILED");
@@ -101,8 +102,8 @@ void wakeCamera() {
     Serial.println(">>> WAKING UP CAMERA <<<");
     pinMode(PWDN_GPIO_NUM, OUTPUT);
     digitalWrite(PWDN_GPIO_NUM, LOW); // Cấp nguồn cho camera
-    delay(500); // Đợi nguồn điện ổn định
-    setupCamera(); // Khởi tạo driver camera
+    delay(500);                       // Đợi nguồn điện ổn định
+    setupCamera();                    // Khởi tạo driver camera
     isCameraSleeping = false;
     delay(500); // Đợi cảm biến camera thích nghi với ánh sáng (AGC/AEC)
   }
@@ -142,7 +143,8 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
 
   while (true) {
-    lastActiveTime = millis(); // Cập nhật liên tục khi đang stream để không bị ngủ
+    lastActiveTime =
+        millis(); // Cập nhật liên tục khi đang stream để không bị ngủ
     fb = esp_camera_fb_get();
     if (!fb) {
       res = ESP_FAIL;
@@ -171,13 +173,29 @@ static esp_err_t open_handler(httpd_req_t *req) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   const char *resp = "OK";
   httpd_resp_send(req, resp, strlen(resp));
-  
+
   Serial.println(">>> Nhan lenh /open tu Server - MO NGAY LAP TUC <<<");
-  // Mở cửa ngay lập tức trên luồng HTTP
-  doorServo.write(90); 
+  // Force re-attach to ensure camera didn't steal the PWM channel
+  doorServo.detach();
+  doorServo.attach(SERVO_PIN, 500, 2400);
+  doorServo.write(120); // Mở góc rộng hơn để dễ thấy
   doorOpenTime = millis();
   isDoorOpen = true;
-  
+
+  return ESP_OK;
+}
+
+static esp_err_t close_handler(httpd_req_t *req) {
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  const char *resp = "OK";
+  httpd_resp_send(req, resp, strlen(resp));
+
+  Serial.println(">>> Nhan lenh /close tu Server - DONG NGAY LAP TUC <<<");
+  doorServo.detach();
+  doorServo.attach(SERVO_PIN, 500, 2400);
+  doorServo.write(0);
+  isDoorOpen = false;
+
   return ESP_OK;
 }
 
@@ -227,7 +245,7 @@ static esp_err_t wake_handler(httpd_req_t *req) {
 static esp_err_t status_handler(httpd_req_t *req) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   char resp[128];
-  snprintf(resp, sizeof(resp), "{\"sleeping\":%s,\"auto_detect\":%s}", 
+  snprintf(resp, sizeof(resp), "{\"sleeping\":%s,\"auto_detect\":%s}",
            isCameraSleeping ? "true" : "false",
            isAutoDetect ? "true" : "false");
   httpd_resp_set_type(req, "application/json");
@@ -254,18 +272,18 @@ void startStreamServer() {
     Serial.println("Stream: http://" + WiFi.localIP().toString() +
                    ":81/stream");
   }
-
-  // 2. Server cho Command (Port 82)
   httpd_config_t config_cmd = HTTPD_DEFAULT_CONFIG();
   config_cmd.server_port = 82;
-  config_cmd.ctrl_port = 32769; // BẮT BUỘC KHÁC 32768 ĐỂ TRÁNH LỖI (112)
-  config_cmd.max_uri_handlers =
-      10; // Đủ cho 6 route: /open, /capture, /auto_on, /auto_off, /wake, /status
-
+  config_cmd.ctrl_port = 32769; 
+  config_cmd.max_uri_handlers = 10; 
   httpd_uri_t open_uri = {.uri = "/open",
                           .method = HTTP_GET,
                           .handler = open_handler,
                           .user_ctx = NULL};
+  httpd_uri_t close_uri = {.uri = "/close",
+                           .method = HTTP_GET,
+                           .handler = close_handler,
+                           .user_ctx = NULL};
   httpd_uri_t capture_uri = {.uri = "/capture",
                              .method = HTTP_GET,
                              .handler = capture_handler,
@@ -289,6 +307,7 @@ void startStreamServer() {
 
   if (httpd_start(&cmd_httpd, &config_cmd) == ESP_OK) {
     httpd_register_uri_handler(cmd_httpd, &open_uri);
+    httpd_register_uri_handler(cmd_httpd, &close_uri);
     httpd_register_uri_handler(cmd_httpd, &capture_uri);
     httpd_register_uri_handler(cmd_httpd, &autoon_uri);
     httpd_register_uri_handler(cmd_httpd, &autooff_uri);
@@ -298,10 +317,10 @@ void startStreamServer() {
   }
 }
 
-//========================================
-
 void connectWifi() {
   WiFi.begin(ssid, password);
+  WiFi.setSleep(
+      false);
   Serial.print("Connecting WiFi");
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries < 30) {
@@ -317,7 +336,6 @@ void connectWifi() {
   }
 }
 
-// Đăng ký stream URL với Python server
 void registerStreamUrl() {
   HTTPClient http;
   String myIP = WiFi.localIP().toString();
@@ -325,15 +343,12 @@ void registerStreamUrl() {
                 myIP + "\"}";
   http.begin(httpClient, String(SERVER) + "/api/esp32/register");
   http.addHeader("Content-Type", "application/json");
-  http.POST(body);
+  int httpCode = http.POST(body);
+  Serial.println("Register to server: " + String(httpCode));
   http.end();
 }
 
-//========================================
 
-//========================================
-
-// Khai báo biến
 void openDoor() {
   Serial.println("OPEN");
   doorServo.write(90);
@@ -341,21 +356,16 @@ void openDoor() {
   isDoorOpen = true;
 }
 
-//========================================
+
 
 void setup() {
   Serial.begin(115200);
 
-  pinMode(PIR_PIN, INPUT_PULLDOWN); // Dùng điện trở kéo xuống để chống nhiễu
+  pinMode(PIR_PIN, INPUT_PULLDOWN);
 
   setupCamera();
   isCameraSleeping = false;
-  lastActiveTime = millis(); // Khởi tạo thời gian hoạt động
 
-  // Khởi tạo Servo SAU khi setup camera
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
   doorServo.setPeriodHertz(50);
   doorServo.attach(SERVO_PIN, 500, 2400);
   doorServo.write(0);
@@ -366,11 +376,12 @@ void setup() {
   delay(300);
   registerStreamUrl();
 
+  lastActiveTime = millis();
+
   Serial.println("=== SMART DOOR ===");
   Serial.println("IP: " + WiFi.localIP().toString());
 }
 
-//========================================
 
 unsigned long lastMotionTime = 0;
 const unsigned long motionCooldown = 10000; // 10 giây
@@ -379,19 +390,17 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     connectWifi();
     registerStreamUrl();
+    lastActiveTime = millis(); 
     return;
   }
 
-  // Đóng cửa tự động sau 2 giây (Non-blocking)
-  if (isDoorOpen && (millis() - doorOpenTime >= 2000)) {
-    Serial.println("CLOSE");
+  // Tự động đóng cửa sau 3 giây
+  if (isDoorOpen && (millis() - doorOpenTime >= 3000)) {
+    Serial.println("CLOSE (auto)");
+    doorServo.detach();
+    doorServo.attach(SERVO_PIN, 500, 2400);
     doorServo.write(0);
     isDoorOpen = false;
-  }
-
-  // Tự động cho camera ngủ sau cameraSleepDelay nếu không có hoạt động
-  if (!isCameraSleeping && (millis() - lastActiveTime >= cameraSleepDelay)) {
-    sleepCamera();
   }
 
   if (isAutoDetect && digitalRead(PIR_PIN) == HIGH) {

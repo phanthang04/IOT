@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Smart Door IoT – Chi Tiết Sản Phẩm</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    body {font-family: 'Segoe UI', Tahoma, sans-serif; background: #1e1e1e; color: #e0e0e0; line-height: 1.6; margin:0; padding:0;}
+    .container {max-width: 960px; margin: auto; padding: 2rem;}
+    h1, h2, h3, h4 {color: #ffcc00; margin-top: 1.5rem;}
+    h1 {font-size: 2.2rem; text-align: center;}
+    h2 {font-size: 1.8rem; border-bottom: 2px solid #ff9900; padding-bottom: 0.3rem;}
+    h3 {font-size: 1.4rem; color: #ffcc66;}
+    pre {background:#2d2d2d; padding:1rem; overflow:auto; border-radius:4px;}
+    code {color:#ffcc66;}
+    table {width:100%; border-collapse:collapse; margin:1rem 0;}
+    th, td {border:1px solid #444; padding:0.5rem; text-align:left;}
+    th {background:#333; color:#ffcc00;}
+    a {color:#66ccff; text-decoration:none;}
+    a:hover {text-decoration:underline;}
+    .faq {margin-top:1rem;}
+    .faq h4 {margin:0.5rem 0; color:#ff9966;}
+    .footer {margin-top:2rem; font-size:0.9rem; text-align:center; color:#777;}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Smart Door IoT – Detailed Documentation</h1>
+
+<h2>1. Tổng quan dự án</h2>
+<ul>
+<li><strong>Tên dự án</strong>: Smart Door Lock (ESP32‑CAM + PIR + Face + Palm + Servo)</li>
+<li><strong>Mục tiêu</strong>: Tạo một hệ thống mở cửa thông minh dựa trên nhận diện khuôn mặt và vân tay, có khả năng báo động chuyển động và tích hợp với server Python để quản lý, lưu trữ và gửi thông báo (Telegram).</li>
+<li><strong>Thiết bị chính</strong>: ESP32‑CAM (module camera), Servo MG90S, cảm biến PIR, module Wi‑Fi, nguồn 5V.</li>
+</ul>
+
+<h2>2. Kiến trúc hệ thống</h2>
+<pre><code>[ESP32‑CAM Firmware] &lt;-- HTTP/JSON --&gt; [Python Flask Server] &lt;-- DB (SQLite) &lt;-- Web UI (HTML/JS)</code></pre>
+<p><strong>Firmware (esp32_door.ino)</strong></p>
+<ul>
+<li>Quản lý camera, servo, PIR.</li>
+<li>Cung cấp 2 server nội bộ: Port 81 (MJPEG stream) và Port 82 (REST API).</li>
+<li>Gửi sự kiện (motion, face_ok, face_fail, palm_ok, palm_fail) tới Flask server.</li>
+</ul>
+<p><strong>Server (server.py)</strong></p>
+<ul>
+<li>Nhận POST/GET từ ESP32, lưu lịch sử, thực hiện nhận diện bằng OpenCV/DLib.</li>
+<li>Cung cấp API cho UI.</li>
+<li>Gửi thông báo Telegram khi có sự kiện quan trọng.</li>
+</ul>
+<p><strong>Web UI (index.html)</strong></p>
+<ul>
+<li>Dashboard dark‑mode, hiển thị video stream, trạng thái cửa, lịch sử.</li>
+<li>Điều khiển mở/đóng, bật/tắt auto detect.</li>
+</ul>
+
+<h2>3. Luồng xử lý (Data Flow)</h2>
+<ol>
+<li><strong>Khởi động ESP32</strong>
+<ul>
+<li>Kết nối Wi‑Fi (cấu hình IP tĩnh).</li>
+<li>Khởi tạo camera, servo và server nội bộ.</li>
+</ul>
+</li>
+<li><strong>Stream video</strong>
+<ul><li>Client truy cập <code>http://&lt;ESP_IP&gt;:81/stream</code>.</li></ul></li>
+<li><strong>Phát hiện chuyển động</strong>
+<ul><li>Khi PIR HIGH → ESP gửi GET tới <code>SERVER/api/trigger_motion</code>.</li></ul></li>
+<li><strong>Nhận diện khuôn mặt / vân tay</strong> (trên server)
+<ul>
+<li>Camera capture (<code>/capture</code>) → Server xử lý.</li>
+<li>Face OK → trả về <code>face_ok</code> → ESP mở cửa.</li>
+<li>Palm OK → trả về <code>palm_ok</code> → ESP mở cửa.</li>
+<li>Fail → trả về <code>*_fail</code> → âm báo lỗi.</li>
+</ul></li>
+<li><strong>Quản lý trạng thái</strong>
+<ul>
+<li>ESP giữ <code>isAutoDetect</code> và <code>isCameraSleeping</code>.</li>
+<li>Không hoạt động &gt;15s → camera ngủ.</li>
+</ul></li>
+<li><strong>Đóng cửa tự động</strong>
+<ul><li>Sau 3 s cửa tự động đóng.</li></ul></li>
+</ol>
+
+<h2>4. Thuật toán chính</h2>
+<h3>4.1 Motion detection (PIR)</h3>
+<pre><code>if (digitalRead(PIR_PIN) == HIGH && (millis() - lastMotionTime >= motionCooldown)) {
+    // Trigger motion event
+}
+</code></pre>
+<p><code>motionCooldown</code> = 10 s để tránh spam.</p>
+<h3>4.2 Face Recognition (Server side)</h3>
+<pre><code>1. Load known_face_encodings from DB.
+2. frame = cv2.imread(image)
+3. face_locations = face_recognition.face_locations(frame)
+4. encodings = face_recognition.face_encodings(frame, face_locations)
+5. Compare with known_face_encodings using face_distance (threshold 0.45).
+6. Return JSON {"event":"face_ok"} or {"event":"face_fail"}.
+</code></pre>
+<h3>4.3 Palm (Hand) Recognition</h3>
+<p>Sử dụng <code>mediapipe</code> để trích xuất landmarks, tính toán góc các khớp, so sánh với mẫu. Độ lệch &lt; 0.2 → <code>palm_ok</code>.</p>
+<h3>4.4 Camera Sleep/WAKE</h3>
+<p>Khi không có request trong <code>cameraSleepDelay</code> (15 s) → <code>esp_camera_deinit()</code> và đặt <code>PWDN</code> HIGH.
+Khi nhận bất kỳ request nào (stream, capture, motion) → bật lại camera.</p>
+
+<h2>5. Kết nối IoT ↔ Server</h2>
+<table>
+<thead><tr><th>Thành phần</th><th>Giao thức</th><th>URL mẫu</th><th>Phương thức</th><th>Dữ liệu gửi/nhận</th></tr></thead>
+<tbody>
+<tr><td>ESP → Server (motion)</td><td>HTTP GET</td><td>http://&lt;SERVER_IP&gt;:5000/api/trigger_motion</td><td>GET</td><td>Không có body, trả về status code</td></tr>
+<tr><td>ESP → Server (register stream)</td><td>HTTP POST</td><td>http://&lt;SERVER_IP&gt;:5000/api/esp32/register</td><td>POST</td><td>{"stream_url":"http://&lt;ESP_IP&gt;:81/stream","ip":"&lt;ESP_IP&gt;"}</td></tr>
+<tr><td>Server → ESP (open/close)</td><td>HTTP GET</td><td>http://&lt;ESP_IP&gt;:82/open</td><td>GET</td><td>Trả về "OK" và ESP mở cửa</td></tr>
+<tr><td>Server → ESP (capture)</td><td>HTTP GET</td><td>http://&lt;ESP_IP&gt;:82/capture</td><td>GET</td><td>Trả về JPEG image</td></tr>
+<tr><td>UI → Server (control)</td><td>AJAX (fetch)</td><td>/api/door/open</td><td>POST</td><td>Không có, trả về trạng thái</td></tr>
+</tbody>
+</table>
+<p>IP tĩnh được cấu hình trong <code>esp32_door.ino</code> (đoạn 28‑34). Biến <code>SERVER</code> (dòng 36) cần thay thành IP máy chạy Flask.</p>
+
+<h2>6. Cài đặt &amp; Chạy</h2>
+<ol>
+<li><strong>ESP32</strong>
+<ul>
+<li>Mở <code>esp32_door.ino</code> trong Arduino IDE.</li>
+<li>Thay <code>ssid</code>, <code>password</code> và <code>SERVER</code> cho môi trường.</li>
+<li>Upload.</li>
+</ul>
+</li>
+<li><strong>Server</strong>
+<ul>
+<li>Tạo virtualenv, <code>pip install -r requirements.txt</code> (flask, opencv‑python, dlib, mediapipe, python‑telegram‑bot).</li>
+<li>Chạy <code>python server.py</code> → lắng nghe 0.0.0.0:5000.</li>
+</ul>
+</li>
+<li><strong>Web UI</strong>
+<ul>
+<li>Mở <code>static/index.html</code> trong trình duyệt (hoặc qua Flask static).</li>
+<li>Kiểm tra stream, nhấn “Open/Close”.</li>
+</ul>
+</li>
+</ol>
+
+<h2>7. Kiểm thử</h2>
+<ul>
+<li>Wi‑Fi: Serial prints <code>WiFi OK: &lt;IP&gt;</code>.</li>
+<li>Stream: Truy cập <code>&lt;ESP_IP&gt;:81/stream</code>.</li>
+<li>Motion: Khi có người qua, ESP gửi GET, server log “Motion trigger”.</li>
+<li>Face: Đăng ký khuôn mặt (API <code>/api/face_register</code>), thử mở cửa.</li>
+<li>Palm: Tương tự với API <code>/api/palm_register</code>.</li>
+<li>Auto detect OFF: <code>http://&lt;ESP_IP&gt;:82/auto_off</code> → camera ngủ ngay.</li>
+</ul>
+
+<h2>8. FAQ – Câu hỏi thường gặp (để chuẩn bị demo)</h2>
+<div class="faq">
+<h4>Q1: Làm sao ESP biết địa chỉ IP server?</h4>
+<p>A: Địa chỉ server được hard‑code trong biến <code>SERVER</code> (line 36). Khi chuyển sang máy khác, cập nhật giá trị này và upload lại firmware.</p>
+<h4>Q2: Tại sao camera không stream được?</h4>
+<p>A: Kiểm tra:
+<ul><li>ESP đã kết nối Wi‑Fi?</li><li>Port 81 chưa bị firewall chặn?</li><li>Đảm bảo <code>setupCamera()</code> thành công (Serial “Camera OK”).</li></ul></p>
+<h4>Q3: Khi mở cửa nhưng servo không quay?</h4>
+<p>A: Kiểm tra PWM timer đã allocate (lines 384‑386) và chân <code>SERVO_PIN</code> (GPIO14). Đo điện áp trên chân servo hoặc thay nguồn.</p>
+<h4>Q4: Server không nhận được request motion?</h4>
+<p>A: Kiểm tra IP của ESP (<code>Serial.println(WiFi.localIP())</code>). Đảm bảo IP server reachable từ ESP (ping). Kiểm tra firewall trên máy chủ.</p>
+<h4>Q5: Face recognition luôn trả về FAIL?</h4>
+<p>A: Có thể vì:
+<ul><li><code>known_face_encodings</code> chưa có dữ liệu (chưa đăng ký).</li><li>Ánh sáng camera kém → ảnh mờ.</li><li>Ngưỡng <code>0.45</code> quá chặt, có thể tăng lên 0.5.</li></ul></p>
+<h4>Q6: Tại sao camera ngủ quá sớm?</h4>
+<p>A: Tham số <code>cameraSleepDelay</code> ở <code>esp32_door.ino</code> (line 71) là 15000 ms. Có thể tăng lên 30000 ms.</p>
+<h4>Q7: Làm sao bật/tắt Auto Detect từ UI?</h4>
+<p>A: UI gọi endpoint <code>/api/door/auto_on</code> → server gửi GET tới <code>http://&lt;ESP_IP&gt;:82/auto_on</code> (bật) hoặc <code>auto_off</code> (tắt).</p>
+<h4>Q8: Khi demo muốn ghi lại log toàn bộ quá trình, có file log không?</h4>
+<p>A: Serial logs có thể xem trong Arduino IDE Serial Monitor. Đối với server, log được ghi vào <code>server.log</code> (cấu hình logging trong <code>server.py</code>).</p>
+<h4>Q9: Làm sao thay đổi chế độ IP tĩnh?</h4>
+<p>A: Sửa các giá trị <code>local_IP</code>, <code>gateway</code>, <code>subnet</code>, <code>primaryDNS</code>, <code>secondaryDNS</code> trong <code>esp32_door.ino</code> (lines 28‑34) và upload lại.</p>
+<h4>Q10: Nếu muốn mở rộng thêm tính năng (ví dụ RFID), quy trình?</h4>
+<p>A:
+<ul><li>Thêm thư viện RFID, khai báo pin.</li><li>Tạo endpoint mới trên ESP (<code>/rfid</code>).</li><li>Server xử lý tương tự như face/palm.</li><li>Cập nhật UI để gửi request.</li></ul></p>
+</div>
+
+<h2>8. Risks &amp; Challenges</h2>
+<ul>
+<li><strong>Network instability</strong>: Wi‑Fi dropout can cause loss of video stream and delayed events.</li>
+<li><strong>Power supply constraints</strong>: ESP32‑CAM draws ~250 mA; insufficient power leads to brown‑outs, camera failures.</li>
+<li><strong>Latency</strong>: HTTP round‑trip (ESP → Server → UI) adds ~200‑300 ms; real‑time unlocking may feel slow.</li>
+<li><strong>Security</strong>: Hard‑coded SSID/password and lack of TLS expose the device to MITM attacks.</li>
+<li><strong>Resource limits</strong>: ESP32 flash (~4 MB) limits storing large models; recognition runs on server.</li>
+<li><strong>Hardware reliability</strong>: Servo jitter and PIR false positives can cause unintended door actions.</li>
+<li><strong>Scalability</strong>: Adding many ESP devices may overload the single‑thread Flask server without proper async handling.</li>
+</ul>
+
+<h2>9. Kết luận</h2>
+<ul>
+<li>Toàn bộ luồng từ cảm biến → ESP → Server → UI đã được mô tả chi tiết.</li>
+<li>Các thuật toán nhận diện được triển khai trên server để giảm tải ESP.</li>
+<li>Hệ thống có khả năng mở rộng (thêm RFID, Bluetooth, OTA updates).</li>
+<li>Đảm bảo các tham số IP và cổng không xung đột, và luôn kiểm tra log khi gặp lỗi.</li>
+</ul>
+
+<div class="footer">
+<p>*Prepared for demo on 2026‑06‑04. Chúc bạn thành công!*</p>
+</div>
+</div>
+</body>
+</html>

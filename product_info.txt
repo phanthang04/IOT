@@ -1,0 +1,153 @@
+Smart Door IoT Project – Detailed Documentation
+===================================================
+
+## 1. Tổng quan dự án
+- **Tên dự án**: Smart Door Lock (ESP32‑CAM + PIR + Face + Palm + Servo)
+- **Mục tiêu**: Tạo một hệ thống mở cửa thông minh dựa trên nhận diện khuôn mặt và vân tay, có khả năng báo động chuyển động và tích hợp với server Python để quản lý, lưu trữ và gửi thông báo (Telegram).
+- **Thiết bị chính**: ESP32‑CAM (module camera), Servo MG90S, cảm biến PIR, module Wi‑Fi, nguồn 5V.
+
+## 2. Kiến trúc hệ thống
+```
+[ESP32‑CAM Firmware] <-- HTTP/JSON --> [Python Flask Server] <-- DB (SQLite) <-- Web UI (HTML/JS)
+```
+- **Firmware** (esp32_door.ino):
+  - Quản lý camera, servo, PIR.
+  - Cung cấp 2 server nội bộ:
+    - Port 81: MJPEG stream.
+    - Port 82: REST API (open, close, capture, auto_on, auto_off, wake, status).
+  - Gửi sự kiện (motion, face_ok, face_fail, palm_ok, palm_fail) tới Flask server.
+- **Server** (server.py):
+  - Nhận POST/GET từ ESP32, lưu lịch sử, thực hiện nhận diện bằng OpenCV/DLib.
+  - Cung cấp API cho UI: `/api/esp32/register`, `/api/trigger_motion`, `/api/face_register`, …
+  - Gửi thông báo Telegram khi có sự kiện quan trọng.
+- **Web UI** (`index.html`):
+  - Dashboard dark‑mode, hiển thị video stream, trạng thái cửa, lịch sử.
+  - Điều khiển mở/đóng, bật/tắt auto detect.
+
+## 3. Luồng xử lý (Data Flow)
+1. **Khởi động ESP32**
+   - Kết nối Wi‑Fi (cấu hình IP tĩnh).
+   - Khởi tạo camera, servo và server nội bộ.
+2. **Stream video**
+   - Client (trình duyệt) truy cập `http://<ESP_IP>:81/stream`.
+3. **Phát hiện chuyển động**
+   - Khi PIR HIGH → ESP gửi GET tới `SERVER/api/trigger_motion`.
+   - Server trả về `200 OK` và lưu log.
+4. **Nhận diện khuôn mặt / vân tay** (được thực hiện ở server)
+   - Camera capture (`/capture`) → Server xử lý:
+     - `face_recognition` → nếu OK => trả về `face_ok` → ESP bật âm thanh và mở cửa.
+     - `palm_recognition` → nếu OK => trả về `palm_ok` → ESP mở cửa.
+   - Nếu FAIL → trả về `face_fail`/`palm_fail` → âm báo lỗi.
+5. **Quản lý trạng thái**
+   - ESP giữ `isAutoDetect` (tự động nhận dạng) và `isCameraSleeping` (tiết kiệm năng lượng). 
+   - Khi không hoạt động >15s → camera ngủ, server vẫn nhận lệnh Wake khi cần.
+6. **Đóng cửa tự động**
+   - Sau 3s cửa tự động đóng.
+
+## 4. Thuật toán chính
+### 4.1 Motion detection (PIR)
+```c
+if (digitalRead(PIR_PIN) == HIGH && (millis() - lastMotionTime >= motionCooldown)) {
+    // Trigger motion event
+}
+```
+- `motionCooldown` = 10 s để tránh spam.
+
+### 4.2 Face Recognition (Server side)
+1. Load `known_face_encodings` từ DB.
+2. `frame = cv2.imread(image)`
+3. `face_locations = face_recognition.face_locations(frame)`
+4. `encodings = face_recognition.face_encodings(frame, face_locations)`
+5. So sánh với `known_face_encodings` bằng `face_distance` → threshold 0.45.
+6. Trả về JSON `{"event":"face_ok"}` hoặc `{"event":"face_fail"}`.
+
+### 4.3 Palm (Hand) Recognition
+- Sử dụng `mediapipe` để trích xuất landmarks.
+- Tính toán góc các khớp, so sánh với mẫu đã lưu.
+- Nếu độ lệch < 0.2 → `palm_ok`.
+
+### 4.4 Camera Sleep/WAKE
+- Khi không có request trong `cameraSleepDelay` (15 s) → `esp_camera_deinit();` và đặt `PWDN` HIGH.
+- Khi nhận bất kỳ request nào (stream, capture, motion) → `pinMode(PWDN_GPIO_NUM, OUTPUT); digitalWrite(PWDN_GPIO_NUM, LOW); setupCamera();`.
+
+## 5. Kết nối IoT ↔ Server
+| Thành phần | Giao thức | URL mẫu | Phương thức | Dữ liệu gửi/nhận |
+|-----------|-----------|--------|------------|-------------------|
+| ESP → Server (motion) | HTTP GET | `http://<SERVER_IP>:5000/api/trigger_motion` | GET | Không có body, trả về status code
+| ESP → Server (register stream) | HTTP POST | `http://<SERVER_IP>:5000/api/esp32/register` | POST | `{ "stream_url": "http://<ESP_IP>:81/stream", "ip": "<ESP_IP>" }`
+| Server → ESP (open/close) | HTTP GET | `http://<ESP_IP>:82/open` | GET | Trả về "OK" và ESP mở cửa
+| Server → ESP (capture) | HTTP GET | `http://<ESP_IP>:82/capture` | GET | Trả về JPEG image
+| UI → Server (control) | AJAX (fetch) | `/api/door/open` | POST | Không có, trả về trạng thái
+
+- **Cấu hình IP tĩnh** trên ESP (`local_IP`, `gateway`, `subnet`, `primaryDNS`, `secondaryDNS`).
+- **SERVER** được khai báo trong `esp32_door.ino` (dòng 36): `const char *SERVER = "http://172.20.10.7:5000";` → cần thay đổi thành IP máy tính chạy Flask.
+
+## 6. Cài đặt & Chạy
+1. **ESP32**
+   - Mở `esp32_door.ino` trong Arduino IDE.
+   - Thay `ssid`, `password` và `SERVER` cho môi trường.
+   - Upload.
+2. **Server**
+   - Tạo virtualenv, `pip install -r requirements.txt` (flask, opencv‑python, dlib, mediapipe, python‑telegram‑bot).
+   - `python server.py` → chạy ở 0.0.0.0:5000.
+3. **Web UI**
+   - Mở `static/index.html` trong trình duyệt (hoặc dùng Flask static).
+   - Kiểm tra stream, nhấn “Open”/“Close”.
+
+## 7. Kiểm thử
+- **Kiểm tra Wi‑Fi**: Serial prints `WiFi OK: <IP>`.
+- **Kiểm tra stream**: Truy cập `<ESP_IP>:81/stream` → xem video.
+- **Motion**: Khi có người qua, ESP gửi GET, server log “Motion trigger”.
+- **Face**: Đăng ký khuôn mặt (API `/api/face_register`), sau đó thử mở cửa.
+- **Palm**: Tương tự với API `/api/palm_register`.
+- **Auto detect OFF**: `http://<ESP_IP>:82/auto_off` → camera ngủ ngay.
+
+## 8. FAQ – Câu hỏi thường gặp (để chuẩn bị demo)
+
+### Q1: Làm sao ESP biết địa chỉ IP server?
+A: Địa chỉ server được hard‑code trong biến `SERVER` (line 36). Khi chuyển sang máy khác, cập nhật giá trị này và upload lại firmware.
+
+### Q2: Tại sao camera không stream được?
+A: Kiểm tra:
+- ESP đã kết nối Wi‑Fi?
+- Port 81 chưa bị firewall chặn?
+- Đảm bảo `setupCamera()` thành công (Serial “Camera OK”).
+
+### Q3: Khi mở cửa nhưng servo không quay?
+A: Kiểm tra PWM timer đã allocate (lines 384‑386) và chân `SERVO_PIN` (GPIO14). Đo điện áp trên chân servo, hoặc thay pin nguồn.
+
+### Q4: Server không nhận được request motion?
+A: Kiểm tra Wi‑Fi IP của ESP (`Serial.println(WiFi.localIP())`). Đảm bảo IP server reachable từ ESP (ping từ ESP console). Kiểm tra firewall trên máy chủ.
+
+### Q5: Face recognition luôn trả về FAIL?
+A: Có thể vì:
+- `known_face_encodings` chưa có dữ liệu (chưa đăng ký khuôn mặt).
+- Ánh sáng camera kém → ảnh mờ, ảnh không đủ nét.
+- Ngưỡng `0.45` quá chặt, có thể tăng lên 0.5.
+
+### Q6: Tại sao camera ngủ quá sớm?
+A: Tham số `cameraSleepDelay` ở `esp32_door.ino` (line 71) là 15000 ms. Có thể tăng lên 30000 ms để kéo dài thời gian hoạt động.
+
+### Q7: Làm sao bật/tắt Auto Detect từ UI?
+A: UI gọi endpoint `/api/door/auto_on` → server gửi GET tới `http://<ESP_IP>:82/auto_on` (bật) hoặc `auto_off` (tắt).
+
+### Q8: Khi demo muốn ghi lại log toàn bộ quá trình, có file log không?
+A: Serial logs có thể xem trong Arduino IDE Serial Monitor. Đối với server, log được ghi vào `server.log` (cấu hình logging trong `server.py`).
+
+### Q9: Làm sao thay đổi chế độ IP tĩnh?
+A: Sửa các giá trị `local_IP`, `gateway`, `subnet`, `primaryDNS`, `secondaryDNS` trong `esp32_door.ino` (lines 28‑34) và upload lại.
+
+### Q10: Nếu muốn mở rộng thêm tính năng (ví dụ RFID), quy trình?
+A: - Thêm thư viện RFID, khai báo pin.
+- Tạo endpoint mới trên ESP (`/rfid`).
+- Server xử lý tương tự như face/palm.
+- Cập nhật UI để gửi request.
+
+## 9. Kết luận
+- Toàn bộ luồng từ cảm biến → ESP → Server → UI đã được mô tả chi tiết.
+- Các thuật toán nhận diện được triển khai trên server để giảm tải ESP.
+- Hệ thống có khả năng mở rộng (thêm RFID, Bluetooth, OTA updates).
+- Đảm bảo các tham số IP và cổng không xung đột, và luôn kiểm tra log khi gặp lỗi.
+
+---
+*Prepared for demo on 2026‑06‑04. Chúc bạn thành công!*

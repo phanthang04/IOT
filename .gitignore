@@ -1,0 +1,41 @@
+# ─── BẢO MẬT & CẤU HÌNH (TOKENS, KEYS) ───────────────────────
+# Bỏ qua tệp chứa khóa bí mật AES mã hóa sinh trắc học
+data/secret.key
+secret.key
+.env
+config.json
+
+# ─── SƠ ĐỒ DỰ ÁN (DIAGRAMS) ──────────────────────────────────
+# Bỏ qua 2 file sơ đồ kết nối theo yêu cầu
+SODO_KET_NOI.md
+sodo.html
+
+# ─── HƯỚNG DẪN DỰ ÁN (GUIDE) ──────────────────────────────────
+# Bỏ qua file hướng dẫn dự án theo yêu cầu
+HUONG_DAN.md
+
+# ─── MÔI TRƯỜNG ẢO & PYTHON CACHE ────────────────────────────
+.venv/
+.venv312/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# ─── CƠ SỞ DỮ LIỆU & TỆP TẠM (DATABASES & TEMP FILES) ────────
+# Tránh đẩy ảnh và database SQLite thời gian thực lên Git
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/strangers/
+data/users/
+data/logs/
+tmp/
+
+# ─── HỆ ĐIỀU HÀNH (SYSTEM FILES) ─────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini

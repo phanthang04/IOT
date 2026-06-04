@@ -78,7 +78,7 @@ def save_config_to_file(config):
 
 app_config = load_config()
 esp32_ip = app_config.get("esp32_ip", "")
-esp32_stream_url = app_config.get("esp32_stream_url", "")
+esp32_stream_url = f"http://{esp32_ip}:81/stream" if esp32_ip else ""
 
 # ─── LOGGING ──────────────────────────────────────────────────
 logging.basicConfig(
@@ -587,6 +587,12 @@ def esp32_status():
         "sleeping": sleeping,
         "auto_detect": auto_detect
     })
+
+@app.route("/api/esp32/ip", methods=["GET"])
+def get_esp32_ip():
+    """Return the currently known ESP32 IP address."""
+    _update_esp32_ip_from_request()
+    return jsonify({"esp32_ip": esp32_ip})
 
 def _proxy_esp32_stream():
     """Proxy MJPEG stream từ ESP32 về browser (low-latency)."""
@@ -1108,7 +1114,7 @@ def test_palm():
 
 @app.route("/api/test/notify_success", methods=["POST"])
 def test_notify_success():
-    """Gửi thông báo Telegram khi xác thực kép thành công từ Web UI"""
+    """Gửi thông báo Telegram khi xác thực kép thành công từ Web UI và mở cửa"""
     data = request.json
     if not data:
         return jsonify({"error": "No data"}), 400
@@ -1123,6 +1129,24 @@ def test_notify_success():
         args=(name, user_id, "dual_verify", avg_conf)
     ).start()
     log.info(f"Web dual verify OK: {name} (face={face_conf}%, palm={palm_conf}%, avg={avg_conf}%)")
+
+    # Mở cửa trên ESP32
+    if esp32_ip:
+        opened = False
+        for attempt in range(3):
+            for port in [82, 80]:
+                try:
+                    resp = requests.get(f"http://{esp32_ip}:{port}/open", timeout=3)
+                    if resp.status_code == 200:
+                        log.info(f"Sent open command to ESP32 from Web Verify: {esp32_ip}:{port} → {resp.status_code}")
+                        opened = True
+                        break
+                except Exception as e:
+                    log.warning(f"Web Verify open attempt {attempt+1} failed on port {port}: {e}")
+            if opened:
+                break
+            time.sleep(0.4)
+            
     return jsonify({"message": "OK"})
 
 @app.route("/api/test/notify_fail", methods=["POST"])
